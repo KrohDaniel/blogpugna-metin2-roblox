@@ -108,6 +108,34 @@ let pendingCharName = null;
 let charCreateMode = false;
 
 const world = { w: 2400, h: 1600 };
+function applyWorldSize() {
+  const def = currentWorld();
+  if (def.size) {
+    world.w = def.size.w;
+    world.h = def.size.h;
+  } else {
+    world.w = 2400;
+    world.h = 1600;
+  }
+  // Schmied bleibt in der Mitte der meadows
+  if (def.id === "meadows") {
+    blacksmith.x = world.w / 2;
+    blacksmith.y = world.h / 2;
+    // NPCs um den Schmied gruppieren
+    const offsets = {
+      trader: [-220, 80],
+      trainer: [220, 80],
+      courier: [0, 240],
+    };
+    for (const npc of npcs) {
+      const off = offsets[npc.id];
+      if (off) {
+        npc.x = blacksmith.x + off[0];
+        npc.y = blacksmith.y + off[1];
+      }
+    }
+  }
+}
 const blacksmith = { x: 1220, y: 820, r: 44 };
 const keys = new Set();
 const particles = [];
@@ -694,6 +722,7 @@ function travelToWorld(targetId, edge) {
   const fromDef = currentWorld();
   currentWorldId = targetId;
   const def = currentWorld();
+  applyWorldSize();
   // Spieler kommt vom gegenüberliegenden Rand rein
   const oppositeEdge = { north: "south", south: "north", east: "west", west: "east" }[edge];
   // Spawn etwas ausserhalb des Triggers
@@ -741,6 +770,22 @@ function seedWorld() {
     if (pvpMode === "race") spawnStone(world.w / 2, world.h / 2);
     return;
   }
+  // Meadows: wenige passive Mobs, keine Eliten, kein Boss, ein Trainings-Stein
+  if (wDef.passiveMobs) {
+    const cfg = wDef.passiveMobs;
+    for (let i = 0; i < cfg.count; i += 1) {
+      const point = randomPointAwayFromPlayer(420);
+      spawnMob(point.x, point.y, "mob");
+      const m = mobs[mobs.length - 1];
+      if (m) {
+        m.passive = true;
+        m.speed = Math.round(m.speed * 0.4);
+      }
+    }
+    // 1 Trainings-Stein im NO
+    spawnStone(world.w * 0.72, world.h * 0.32);
+    return;
+  }
   if (wDef.noWildMobs) return;
   for (let i = 0; i < 30; i += 1) {
     const point = randomPointAwayFromPlayer(760);
@@ -751,6 +796,7 @@ function seedWorld() {
   for (const [x, y] of stoneSpots) spawnStone(x, y);
 }
 
+applyWorldSize();
 seedWorld();
 
 function resizeCanvas() {
@@ -924,6 +970,7 @@ function togglePvpBot() {
 
 function travelToArena() {
   currentWorldId = "arena";
+  applyWorldSize();
   mobs.length = 0;
   stones.length = 0;
   droppedItems.length = 0;
@@ -2675,6 +2722,10 @@ function isPointInCone(target, angle, range, radius, extraRadius = 18) {
 
 function damageMob(mob, amount, options = {}) {
   const classDef = getClassDef(player.classId);
+  if (mob.passive && !mob.aggroed) {
+    mob.aggroed = true;
+    floatText(mob.x, mob.y - 56, "!", "#fbbf24");
+  }
   const combo = options.tag === "combo" || options.tag === "detonate";
   const color = combo ? classDef.accent : options.tag === "frost" ? "#9ee7ff" : options.tag === "mark" ? "#35d0a4" : classDef.color;
   floatText(mob.x, mob.y - 28 - mob.r * 0.35, combo ? `KOMBO -${amount}` : `-${amount}`, color);
@@ -3589,20 +3640,21 @@ function update(dt) {
     const frozen = statusTime(mob, "frozen") > 0;
     const stunned = statusTime(mob, "stunned") > 0;
     const speedFactor = stunned ? 0 : frozen ? 0.42 : 1;
-    if (runHostSim && d < 520 && speedFactor > 0) {
+    // Passive Mobs (Wiesen) bewegen sich nicht und attackieren nicht — bis sie provoziert werden
+    const isPassiveIdle = mob.passive && !mob.aggroed;
+    if (!isPassiveIdle && runHostSim && d < 520 && speedFactor > 0) {
       const nx = mob.x + (dx / d) * mob.speed * speedFactor * dt;
       const ny = mob.y + (dy / d) * mob.speed * speedFactor * dt;
       if (!inSafeZone(nx, ny)) {
         mob.x = nx;
         mob.y = ny;
       } else {
-        // push to edge of safe zone
         const ang = Math.atan2(mob.y - blacksmith.y, mob.x - blacksmith.x);
         mob.x = blacksmith.x + Math.cos(ang) * (SAFE_ZONE_RADIUS + 4);
         mob.y = blacksmith.y + Math.sin(ang) * (SAFE_ZONE_RADIUS + 4);
       }
     }
-    // Spieler in Safe-Zone? Kein Schaden vom Mob
+    if (isPassiveIdle) continue; // kein Kontaktschaden bevor aggroed
     if (inSafeZone(player.x, player.y)) continue;
     if (d < player.r + mob.r && player.invuln <= 0) {
       const def = totalDefense();

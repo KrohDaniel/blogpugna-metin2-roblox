@@ -6,13 +6,14 @@ export const worldDefs = {
   meadows: {
     id: "meadows",
     name: "Pugna-Wiesen",
-    subtitle: "Sicherer Hub — Schmied, Handler, Trainerin, Kurier",
-    levelRange: [1, 1],
+    subtitle: "Weite Heimatregion — friedlich, ein paar passive Kreaturen",
+    levelRange: [1, 3],
+    size: { w: 3600, h: 2400 },
     ground: "#2f4630",
     groundAccent: "rgba(255,255,255,0.05)",
     fog: "rgba(78,91,55,0.4)",
     safeZone: true,
-    noWildMobs: true,
+    passiveMobs: { count: 7, mobsOnly: true },
     portals: {
       north: { to: "frostwastes", label: "Frost-Oeden" },
       east: { to: "emberforge", label: "Glut-Schmiede" },
