@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=gear-stack-2" />
+    <link rel="stylesheet" href="styles.css?v=pets-1" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -32,122 +32,365 @@
       </form>
     </section>
 
+    <section id="charSelectOverlay" class="char-select-overlay hidden" aria-label="Charakter waehlen">
+      <div class="char-select-stage">
+        <header class="char-select-head">
+          <span class="eyebrow">Blocpugna</span>
+          <h1>Deine Charaktere</h1>
+          <p id="charSelectUser">—</p>
+        </header>
+        <div id="charList" class="char-list" role="list"></div>
+        <div class="char-select-actions">
+          <button id="charCreateBtn" type="button" class="char-create-btn">+ Neuen Charakter erstellen</button>
+          <button id="charLogoutBtn" type="button" class="char-logout-btn">Abmelden</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="charCreateOverlay" class="char-create-overlay hidden" aria-label="Neuen Charakter erstellen">
+      <div class="char-create-card">
+        <header>
+          <span class="eyebrow">Neuer Charakter</span>
+          <h1>Wie soll er heissen?</h1>
+        </header>
+        <label>
+          <span>Charaktername</span>
+          <input id="charNameInput" type="text" maxlength="16" minlength="2" placeholder="z.B. Aragorn" />
+        </label>
+        <div class="char-create-actions">
+          <button id="charCreateCancel" type="button">Zurueck</button>
+          <button id="charCreateNext" type="button" class="primary">Klasse waehlen</button>
+        </div>
+        <p id="charCreateMessage" class="char-create-message"></p>
+      </div>
+    </section>
+
+    <section id="classOverlay" class="class-overlay" aria-label="Klasse auswaehlen">
+      <div class="class-stage">
+        <div class="class-copy">
+          <span class="eyebrow">Neue Runde</span>
+          <h1>Waehle deine Klasse</h1>
+          <p id="classFantasy">Jede Klasse hat eigene Werte, Skills und Kombos fuer Duo-Kaempfe.</p>
+          <div class="class-preview">
+            <span id="classTitle">Krieger</span>
+            <strong id="classRole">Tank / Kontrolle</strong>
+            <small id="classPassive">Eisenhaut: Weniger Schaden, wenn Gegner dich umzingeln.</small>
+          </div>
+          <button id="classConfirm" class="class-confirm" type="button" data-class-id="warrior">Klasse starten</button>
+        </div>
+        <div id="classChoices" class="class-choices"></div>
+      </div>
+    </section>
+
     <main class="shell">
+      <header class="top-hud" aria-label="Status oben">
+        <div class="top-brand">
+          <span class="brand-mark"></span>
+          <div class="top-brand-text">
+            <strong id="playerNameText">Nicht eingeloggt</strong>
+            <small>Klasse: <span id="classNameText">Krieger</span></small>
+          </div>
+        </div>
+        <div class="top-vitals">
+          <div class="vital hp">
+            <div class="vital-label"><span>HP</span><strong id="hpText">100 / 100</strong></div>
+            <div class="bar"><span id="hpBar"></span></div>
+          </div>
+          <div class="top-stat"><span>LVL</span><strong id="levelText">1</strong></div>
+          <div class="top-stat"><span>Gold</span><strong id="goldText">0</strong></div>
+          <div class="top-stat"><span>ATK</span><strong id="attackText">8</strong></div>
+          <div class="top-stat"><span>DEF</span><strong id="armorText">+0</strong></div>
+        </div>
+        <div class="top-quest">
+          <small id="worldNameLabel">Welt</small>
+          <strong id="worldNameText">Pugna-Wiesen</strong>
+        </div>
+        <div class="top-quest">
+          <small>Quest</small>
+          <strong id="questProgress">0 / 21</strong>
+        </div>
+      </header>
+
       <section class="game-area" aria-label="Blocpugna Spielbereich">
         <canvas id="game" width="1280" height="720"></canvas>
         <div id="toast" class="toast" aria-live="polite"></div>
+
+        <div class="hud-toggles" aria-label="Panels oeffnen">
+          <button id="toggleInv" type="button" data-overlay="invOverlay"><kbd>I</kbd><span>Inventar</span></button>
+          <button id="toggleChar" type="button" data-overlay="invOverlay"><kbd>C</kbd><span>Charakter</span></button>
+          <button id="toggleQuest" type="button" data-overlay="questOverlay"><kbd>M</kbd><span>Quest</span></button>
+          <button id="togglePvp" type="button" data-overlay="pvpOverlay"><kbd>P</kbd><span>PvP</span></button>
+          <button id="toggleSmith" type="button" data-overlay="smithOverlay"><kbd>F</kbd><span>Schmied</span></button>
+          <button id="toggleTalents" type="button" data-overlay="talentsOverlay"><kbd>T</kbd><span>Talente <em id="talentPts" class="tp-badge">0</em></span></button>
+          <button id="switchCharBtn" type="button" title="Charakter wechseln"><kbd>X</kbd><span>Charakter</span></button>
+        </div>
       </section>
 
-      <aside class="hud" aria-label="Spielstatus">
-        <div class="brand">
-          <span class="brand-mark"></span>
-          <div>
-            <h1>Blocpugna</h1>
-            <p id="playerNameText">Nicht eingeloggt</p>
-          </div>
-        </div>
+      <div id="itemTooltip" class="item-tooltip" role="tooltip" aria-hidden="true"></div>
 
-        <div class="panel">
-          <div class="stat-line">
-            <span>Leben</span>
-            <strong id="hpText">100 / 100</strong>
-          </div>
-          <div class="bar"><span id="hpBar"></span></div>
-
-          <div class="stat-line">
-            <span>Erfahrung</span>
-            <strong id="xpText">0 / 50</strong>
-          </div>
+      <footer class="bottom-bar" aria-label="Action Bar">
+        <div class="xp-strip">
+          <span>XP</span>
           <div class="bar xp"><span id="xpBar"></span></div>
-
-          <div class="stat-grid">
-            <div><span>Level</span><strong id="levelText">1</strong></div>
-            <div><span>Gold</span><strong id="goldText">0</strong></div>
-            <div><span>Angriff</span><strong id="attackText">8</strong></div>
-            <div><span>Ruestung</span><strong id="armorText">+0</strong></div>
-          </div>
+          <strong id="xpText">0 / 50</strong>
         </div>
-
-        <div class="panel">
-          <div class="panel-title">
-            <h2>Quest</h2>
-            <span id="questProgress">0 / 8</span>
-          </div>
-          <p id="questText">Besiege 20 Gegner und zerstoere 1 Metin-Stein. Bosse erscheinen zwischendurch.</p>
+        <div class="action-bar">
+          <button id="skillPrimary" type="button" class="action-slot">
+            <span class="ability-icon">✦</span>
+            <span class="ability-info">
+              <span class="ability-head"><strong>Skill</strong><kbd>Q</kbd></span>
+              <small>Hinweis</small>
+            </span>
+            <span class="ability-cooldown">Bereit</span>
+          </button>
+          <button id="skillSecondary" type="button" class="action-slot">
+            <span class="ability-icon">✦</span>
+            <span class="ability-info">
+              <span class="ability-head"><strong>Skill</strong><kbd>E</kbd></span>
+              <small>Hinweis</small>
+            </span>
+            <span class="ability-cooldown">Bereit</span>
+          </button>
+          <button id="skillUltimate" type="button" class="action-slot ultimate">
+            <span class="ability-icon">✦</span>
+            <span class="ability-info">
+              <span class="ability-head"><strong>Ulti</strong><kbd>R</kbd></span>
+              <small>Hinweis</small>
+            </span>
+            <span class="ability-cooldown">Bereit</span>
+          </button>
+          <button id="actionPotion" type="button" class="action-slot potion"
+            data-tooltip-name="Heiltrank"
+            data-tooltip-hint="Stellt 32 HP wieder her."
+            data-tooltip-key="1">
+            <span class="ability-icon" style="color:#ff5d62">🧪</span>
+            <span class="ability-info">
+              <span class="ability-head"><strong>Trank</strong><kbd>1</kbd></span>
+              <small><span id="potionCount">0</span>×</small>
+            </span>
+            <span class="ability-cooldown" id="potionStatus">+32</span>
+          </button>
+          <button id="actionSmith" type="button" class="action-slot smith"
+            data-tooltip-name="Schmied"
+            data-tooltip-hint="Geh zum Schmied auf der Karte und drücke F. Upgrades + Verschmelzen."
+            data-tooltip-key="F">
+            <span class="ability-icon" style="color:#f4c95d">⚒</span>
+            <span class="ability-info">
+              <span class="ability-head"><strong>Schmied</strong><kbd>F</kbd></span>
+              <small id="blacksmithText">Finden</small>
+            </span>
+            <span class="ability-cooldown" id="blacksmithDistance">--</span>
+          </button>
         </div>
+      </footer>
 
-        <div class="panel gear-panel">
-          <div class="panel-title">
-            <h2>Ausruestung</h2>
-            <span id="gearStats">Angriff 0 / Verteidigung 0</span>
-          </div>
-          <div class="gear-grid">
-            <div id="gearWeapon" class="gear-slot empty" data-slot="weapon" title="Keine Waffe ausgeruestet">
-              <span class="gear-label">Waffe</span>
-              <span class="gear-icon">—</span>
-              <span class="gear-name">leer</span>
-            </div>
-            <div id="gearArmor" class="gear-slot empty" data-slot="armor" title="Keine Ruestung ausgeruestet">
-              <span class="gear-label">Ruestung</span>
-              <span class="gear-icon">—</span>
-              <span class="gear-name">leer</span>
-            </div>
-          </div>
-        </div>
+      <!-- Overlays -->
+      <div id="overlayBackdrop" class="overlay-backdrop hidden" aria-hidden="true"></div>
 
-        <div class="panel inventory-panel">
-          <div class="panel-title">
-            <h2>Inventar</h2>
+      <aside id="invOverlay" class="overlay-panel overlay-wide hidden" aria-label="Charakter und Inventar">
+        <header class="overlay-head">
+          <h2>Charakter <span class="head-hint">& Inventar</span></h2>
+          <div class="overlay-head-actions">
             <button id="sortInventory" type="button">Sortieren</button>
+            <button class="overlay-close" data-close="invOverlay" type="button" aria-label="Schliessen">×</button>
           </div>
-          <div id="inventory" class="inventory"></div>
+        </header>
+        <div class="char-inv-grid">
+          <section class="char-side">
+            <div class="char-class-block">
+              <small>Klasse</small>
+              <strong id="classNameTextStats">Krieger</strong>
+              <button id="classChange" type="button">Wechseln</button>
+            </div>
+            <div class="char-stats" id="charStatGrid">
+              <div><span>Level</span><strong id="charLevel">1</strong></div>
+              <div><span>Gold</span><strong id="charGold">0</strong></div>
+              <div><span>Angriff</span><strong id="charAttack">8</strong></div>
+              <div><span>Ruestung</span><strong id="charArmor">+0</strong></div>
+              <div><span>HP</span><strong id="charHp">100/100</strong></div>
+              <div><span>XP</span><strong id="charXp">0/50</strong></div>
+              <div><span>Crit</span><strong id="charCrit">0%</strong></div>
+              <div><span>Lifesteal</span><strong id="charLifesteal">0%</strong></div>
+              <div><span>CDR</span><strong id="charCdr">0%</strong></div>
+            </div>
+            <div class="char-equip">
+              <div class="char-equip-slot" id="equipWeaponSlot">
+                <small>Waffe</small>
+                <span class="ces-icon">—</span>
+                <span class="ces-name">leer</span>
+              </div>
+              <div class="char-equip-slot" id="equipArmorSlot">
+                <small>Ruestung</small>
+                <span class="ces-icon">—</span>
+                <span class="ces-name">leer</span>
+              </div>
+            </div>
+            <div class="pet-slot" id="petSlotBlock">
+              <small>Pet</small>
+              <strong id="petName">Keines</strong>
+              <button id="petToggleBtn" type="button">An/Aus</button>
+            </div>
+          </section>
+          <section class="inv-side">
+            <div class="inv-filters" role="group" aria-label="Inventar filtern">
+              <button type="button" data-inv-filter="all" class="active">Alle</button>
+              <button type="button" data-inv-filter="weapon">Waffen</button>
+              <button type="button" data-inv-filter="armor">Ruestung</button>
+              <button type="button" data-inv-filter="potion">Traenke</button>
+              <button type="button" data-inv-filter="material">Material</button>
+            </div>
+            <div class="inv-scroll">
+              <div id="inventory" class="inventory"></div>
+            </div>
+          </section>
         </div>
+      </aside>
 
-        <div class="panel blacksmith-panel">
-          <div class="panel-title">
-            <h2>Schmied</h2>
-            <span id="blacksmithDistance">Finden</span>
+      <aside id="charOverlay" class="overlay-panel hidden" aria-label="Charakter" hidden></aside>
+
+      <aside id="questOverlay" class="overlay-panel hidden" aria-label="Quest">
+        <header class="overlay-head">
+          <h2>Quest</h2>
+          <button class="overlay-close" data-close="questOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <p id="questText">Besiege 20 Gegner und zerstoere 1 Metin-Stein. Bosse erscheinen zwischendurch.</p>
+      </aside>
+
+      <aside id="pvpOverlay" class="overlay-panel hidden" aria-label="PvP">
+        <header class="overlay-head">
+          <h2>PvP <span id="pvpStatus" class="head-tag">Warten</span></h2>
+          <button class="overlay-close" data-close="pvpOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <div class="pvp-modes" role="group" aria-label="PvP-Modus">
+          <button id="pvpModeDuel" type="button" data-pvp-mode="duel">Spiegel-Duell</button>
+          <button id="pvpModeRace" type="button" data-pvp-mode="race">Metin-Rennen</button>
+        </div>
+        <p id="pvpText">PvP findet auf <strong>derselben Welt</strong> statt — Bot oder Rivale erscheint in deinem Sichtbereich.</p>
+        <p class="pvp-mode-hint" id="pvpModeHint">Spiegel-Duell: 1v1 ohne Mob-Hilfe. Metin-Rennen: wer mehr Schaden am zentralen Stein macht, gewinnt.</p>
+        <div class="pvp-score">
+          <span id="pvpScoreLocal">Du: 0</span>
+          <span id="pvpScoreRemote">Rivale: 0</span>
+        </div>
+        <button id="pvpReady" class="pvp-ready" type="button">Bereit</button>
+        <hr class="pvp-divider" />
+        <div class="pvp-bot-section">
+          <strong>Training gegen Bot</strong>
+          <p class="pvp-bot-text">Spar dir den Wartemodus — kaempfe gegen einen NPC-Bot. Klasse waehlbar.</p>
+          <div class="pvp-bot-classes" role="group">
+            <button type="button" data-bot-class="warrior">Krieger</button>
+            <button type="button" data-bot-class="shadow">Schatten</button>
+            <button type="button" data-bot-class="runemage">Magier</button>
           </div>
-          <p id="blacksmithText">Gehe zum Schmied auf der Karte und druecke F fuer Upgrades bis +9.</p>
-          <div class="smith-actions">
-            <button id="upgradeWeapon" type="button">Waffe +1</button>
-            <button id="upgradeArmor" type="button">Ruestung +1</button>
+          <div class="pvp-bot-stats">
+            <span>Siege: <strong id="pvpBotScore">0</strong></span>
+            <span>Status: <strong id="pvpBotStatus">Aus</strong></span>
           </div>
+          <button id="pvpBotToggle" type="button" class="pvp-ready">Bot starten</button>
         </div>
+      </aside>
 
-        <div class="panel abilities">
-          <h2>Faehigkeiten</h2>
-          <button id="skillAura" type="button">
-            <kbd>Q</kbd>
-            <span>
-              <strong>Schwertverbesserung</strong>
-              <small>Rote Waffen-Aura</small>
-            </span>
-          </button>
-          <button id="skillCrescent" type="button">
-            <kbd>E</kbd>
-            <span>
-              <strong>Sichelhieb</strong>
-              <small>Breiter Klingenstoss</small>
-            </span>
-          </button>
+      <aside id="talentsOverlay" class="overlay-panel hidden" aria-label="Talente">
+        <header class="overlay-head">
+          <h2>Talente <span class="head-tag"><em id="talentPtsInline">0</em> Punkte</span></h2>
+          <div class="overlay-head-actions">
+            <button id="resetTalents" type="button">Reset (50 Gold)</button>
+            <button class="overlay-close" data-close="talentsOverlay" type="button" aria-label="Schliessen">×</button>
+          </div>
+        </header>
+        <p class="talents-hint">Pro Level-Up gibt es 1 Talent-Punkt. Klick auf einen Knoten zum Investieren.</p>
+        <div id="talentList" class="talent-list"></div>
+      </aside>
+
+      <aside id="traderOverlay" class="overlay-panel hidden" aria-label="Haendlerin">
+        <header class="overlay-head">
+          <h2>Händlerin Mara</h2>
+          <button class="overlay-close" data-close="traderOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <p class="overlay-hint">Kaufe Vorräte. Verkaufe Beute zur Hälfte.</p>
+        <div class="trader-tabs">
+          <button id="traderBuyTab" type="button" class="active">Kaufen</button>
+          <button id="traderSellTab" type="button">Verkaufen</button>
         </div>
+        <div id="traderList" class="trader-list"></div>
+      </aside>
 
-        <div class="panel controls">
-          <h2>Steuerung</h2>
-          <div><kbd>WASD</kbd><span>Bewegen</span></div>
-          <div><kbd>Maus</kbd><span>Zielen</span></div>
-          <div><kbd>Klick</kbd><span>Schlagen</span></div>
-          <div><kbd>Leertaste</kbd><span>Schlagen</span></div>
-          <div><kbd>Q</kbd><span>Schwertverbesserung</span></div>
-          <div><kbd>E</kbd><span>Sichelhieb</span></div>
-          <div><kbd>F</kbd><span>Schmied benutzen</span></div>
-          <div><kbd>1</kbd><span>Trank nutzen</span></div>
+      <aside id="trainerOverlay" class="overlay-panel hidden" aria-label="Talent-Trainerin">
+        <header class="overlay-head">
+          <h2>Meisterin Kael</h2>
+          <button class="overlay-close" data-close="trainerOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <p class="overlay-hint">Setzt deine Talente zurück. Alle 5 Minuten kostenlos.</p>
+        <div class="trainer-info">
+          <strong id="trainerCooldownText">Bereit</strong>
+          <small>Investierte Punkte werden vollständig zurückerstattet.</small>
+        </div>
+        <button id="trainerResetBtn" type="button" class="primary-action">Talente zurücksetzen</button>
+      </aside>
+
+      <aside id="courierOverlay" class="overlay-panel hidden" aria-label="Kurier">
+        <header class="overlay-head">
+          <h2>Kurier Sven</h2>
+          <button class="overlay-close" data-close="courierOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <p class="overlay-hint">Tägliche Quest. Reset alle 30 Minuten.</p>
+        <div id="courierQuestBlock" class="courier-block"></div>
+      </aside>
+
+      <aside id="smithOverlay" class="overlay-panel overlay-xwide hidden" aria-label="Schmied">
+        <header class="overlay-head">
+          <h2>Schmied <span id="smithNear" class="head-tag">Nicht in Reichweite</span></h2>
+          <button class="overlay-close" data-close="smithOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <div class="smith-with-inv">
+          <section class="smith-anvil">
+            <small>Item legen</small>
+            <div id="smithSlot" class="smith-item-slot empty">
+              <span class="smith-slot-hint">Klick rechts im Inventar →</span>
+            </div>
+            <div id="smithCostList" class="smith-cost">
+              <strong>Kein Item ausgewaehlt</strong>
+            </div>
+            <div id="smithRiskBlock" class="smith-risk hidden">
+              <span>Bruch-Risiko</span>
+              <div class="smith-risk-bar"><span id="smithRiskFill"></span></div>
+              <strong id="smithRiskText">0%</strong>
+            </div>
+            <div class="smith-actions">
+              <button id="upgradeWeapon" type="button" disabled>Aufwerten +1</button>
+              <button id="smithReturn" type="button">Item zurueck</button>
+            </div>
+            <div class="smith-help">
+              <strong>Hinweise</strong>
+              <ul>
+                <li>Bis +3: kein Bruch-Risiko</li>
+                <li>+4..+6: 12-25% pro Versuch</li>
+                <li>+7..+9: 50-80% — eine Kopie als Backup mitnehmen</li>
+                <li>Bei Bruch ist das Item weg, Materialien verbraucht</li>
+              </ul>
+            </div>
+            <div class="smith-merge">
+              <strong>Stapel verschmelzen</strong>
+              <small>3 gleiche Common-Items → 1 Tier höher mit Affixen.</small>
+              <button id="mergeStacks" type="button">Verschmelzen</button>
+            </div>
+          </section>
+          <section class="smith-inv">
+            <div class="inv-filters" role="group" aria-label="Filter">
+              <button type="button" data-inv-filter="all" class="active">Alle</button>
+              <button type="button" data-inv-filter="weapon">Waffen</button>
+              <button type="button" data-inv-filter="armor">Ruestung</button>
+              <button type="button" data-inv-filter="potion">Traenke</button>
+              <button type="button" data-inv-filter="material">Material</button>
+            </div>
+            <div class="inv-scroll">
+              <div id="smithInventory" class="inventory"></div>
+            </div>
+          </section>
         </div>
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=gear-stack-2"></script>
-    <script src="game.js?v=gear-stack-2"></script>
+    <script type="module" src="firebase-config.js?v=pets-1"></script>
+    <script type="module" src="src/main.js?v=pets-1"></script>
   </body>
 </html>

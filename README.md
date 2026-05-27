@@ -5,7 +5,13 @@ Loot, Inventar und Metin-Steinen.
 
 ## Start
 
-Oeffne `index.html` direkt im Browser.
+Starte lokal einen kleinen Server, damit die ES-Module sauber geladen werden:
+
+```bash
+npm run dev
+```
+
+Danach im Browser oeffnen: `http://127.0.0.1:5173/`
 
 Online-Version: `https://blogpugna.web.app`
 
@@ -33,6 +39,8 @@ Realtime Database und nicht fuer echte Produktionsaccounts gedacht.
 ## Inhalt
 
 - Blockiger Roblox-inspirierter Stil ohne offizielle Roblox-Assets
+- Drei Klassen mit eigenen Werten und Skills: Krieger, Schattenlaeufer, Runenmagier
+- Duo-Kombos ueber Status-Effekte wie Betaeubung, Giftmarke, Feuer-Detonation und Frost
 - **Shared World**: alle eingeloggten Spieler sehen dieselben Mobs, Steine und Loot
 - **Host-System** mit Auto-Failover: erster Spieler wird Host, bei Disconnect uebernimmt automatisch ein anderer
 - **Damage-Credit Loot**: wer den meisten Schaden macht, bekommt Loot 6s reserviert (rot/gruen umrandet)
