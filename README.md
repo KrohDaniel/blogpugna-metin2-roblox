@@ -33,12 +33,18 @@ Realtime Database und nicht fuer echte Produktionsaccounts gedacht.
 ## Inhalt
 
 - Blockiger Roblox-inspirierter Stil ohne offizielle Roblox-Assets
-- Gegner mit Nahkampf-KI
+- **Shared World**: alle eingeloggten Spieler sehen dieselben Mobs, Steine und Loot
+- **Host-System** mit Auto-Failover: erster Spieler wird Host, bei Disconnect uebernimmt automatisch ein anderer
+- **Damage-Credit Loot**: wer den meisten Schaden macht, bekommt Loot 6s reserviert (rot/gruen umrandet)
+- Gegner mit Nahkampf-KI, Mob-Anzahl und HP skalieren mit Anzahl Spieler (1+0.35*N)
 - Metin-Steine mit mehr Leben und garantierter Waffen-Lootrolle
+- Ruestung als Drop: Lederweste / Eisenharnisch / Stahlpanzer / Drachenplatte (4 Tiers)
 - Rare/Epic-Waffen mit mehr Schaden, groesserer Reichweite und eigenen Angriffseffekten
 - Vollmondsichel als legendaerer Drop von Metin-Steinen, Minibossen und Bossen
 - Mehr Gegnerwellen, Minibosse und Bosse mit griechischen Namen
-- Schmied-NPC auf der Karte fuer Waffen- und Ruestungsupgrades bis +9
-- Tod setzt Level, Stats, Gold und Inventar zurueck
+- Schmied-NPC fuer Waffen- *und* Ruestungs-Upgrades bis +9 (Ruestungs-Upgrade staerkt das aktuelle Item)
+- Schwierigkeitsboost: Mob HP +60%, dmg +40%, schnellere Waves, traegere Heiltraenke
+- Minimap rechts oben mit Boss-/Mob-/Spieler-Markern und Host-Anzeige
+- Tod setzt Level, Stats, Gold und Inventar (inkl. Ruestungsplatz) zurueck
 - Kleine Firebase-Username-Auth und Live-Spieler auf gemeinsamer Map
 - XP, Level, Gold, Inventar und Quest-Fortschritt

@@ -1,8 +1,55 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
     "blocpugna": {
-      ".read": true,
-      ".write": true
+      "users": {
+        "$username": {
+          ".read": "$username.matches(/^[a-z0-9_]{3,18}$/)",
+          ".write": "!data.exists() && $username.matches(/^[a-z0-9_]{3,18}$/)",
+          ".validate": "newData.hasChildren(['passwordHash', 'createdAt'])",
+          "passwordHash": {
+            ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
+          },
+          "createdAt": {
+            ".validate": "newData.isNumber()"
+          },
+          "$other": {
+            ".validate": false
+          }
+        }
+      },
+      "rooms": {
+        "$roomId": {
+          ".read": "$roomId.matches(/^[a-zA-Z0-9_-]{1,32}$/)",
+          "players": {
+            "$username": {
+              ".write": "$username.matches(/^[a-z0-9_]{3,18}$/) && (!newData.exists() || newData.hasChildren(['name', 'color', 'x', 'y', 'hp', 'maxHp', 'level']))",
+              "name": {
+                ".validate": "newData.isString() && newData.val().length <= 32"
+              },
+              "color": {
+                ".validate": "newData.isString() && newData.val().length <= 16"
+              },
+              "x": { ".validate": "newData.isNumber()" },
+              "y": { ".validate": "newData.isNumber()" },
+              "hp": { ".validate": "newData.isNumber()" },
+              "maxHp": { ".validate": "newData.isNumber()" },
+              "level": { ".validate": "newData.isNumber()" },
+              "weapon": { ".validate": "newData.isString() && newData.val().length <= 32" },
+              "weaponUpgrade": { ".validate": "newData.isNumber()" },
+              "armorLevel": { ".validate": "newData.isNumber()" },
+              "updatedAt": { ".validate": "newData.isNumber()" },
+              "$other": {
+                ".validate": false
+              }
+            }
+          },
+          "world": {
+            ".write": "$roomId.matches(/^[a-zA-Z0-9_-]{1,32}$/)"
+          }
+        }
+      }
     }
   }
 }

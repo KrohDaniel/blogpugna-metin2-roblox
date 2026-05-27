@@ -76,9 +76,11 @@ const player = {
   inventory: [
     item("health_potion", 3),
     item("rust_sword", 1),
+    item("leather_armor", 1),
   ],
   weapon: "rust_sword",
   weaponIndex: 1,
+  armorIndex: 2,
 };
 
 const defaultPlayerState = {
@@ -90,19 +92,25 @@ const defaultPlayerState = {
   inventory: [
     item("health_potion", 3),
     item("rust_sword", 1),
+    item("leather_armor", 1),
   ],
   weapon: "rust_sword",
   weaponIndex: 1,
+  armorIndex: 2,
 };
 
 const itemDefs = {
-  health_potion: { name: "Roter Trank", icon: "+", type: "potion", rarity: "common", heal: 45 },
+  health_potion: { name: "Roter Trank", icon: "+", type: "potion", rarity: "common", heal: 32 },
   rust_sword: { name: "Rostklinge", icon: "/", type: "weapon", rarity: "common", attack: 3, color: "#d9dee5", glow: "rgba(217,222,229,0.18)", reach: 82, cooldown: 0.42 },
   iron_blade: { name: "Eisenklinge", icon: "I", type: "weapon", rarity: "rare", attack: 8, color: "#9ee7ff", glow: "rgba(85,215,255,0.28)", reach: 92, cooldown: 0.38 },
   metin_glaive: { name: "Metin-Gleve", icon: "G", type: "weapon", rarity: "rare", attack: 14, color: "#55d7ff", glow: "rgba(85,215,255,0.36)", reach: 108, cooldown: 0.36 },
   pugna_cleaver: { name: "Pugna-Spalter", icon: "P", type: "weapon", rarity: "epic", attack: 21, color: "#c084fc", glow: "rgba(192,132,252,0.42)", reach: 118, cooldown: 0.46 },
   storm_saber: { name: "Sturmsaebel", icon: "S", type: "weapon", rarity: "epic", attack: 17, color: "#f4c95d", glow: "rgba(244,201,93,0.42)", reach: 102, cooldown: 0.28 },
   fullmoon_sickle: { name: "Vollmondsichel", icon: "C", type: "weapon", rarity: "legendary", attack: 29, color: "#fff2a8", glow: "rgba(244,201,93,0.48)", reach: 132, cooldown: 0.33 },
+  leather_armor: { name: "Lederweste", icon: "L", type: "armor", rarity: "common", defense: 4, color: "#a98056" },
+  iron_armor: { name: "Eisenharnisch", icon: "A", type: "armor", rarity: "rare", defense: 9, color: "#9ee7ff" },
+  steel_armor: { name: "Stahlpanzer", icon: "T", type: "armor", rarity: "epic", defense: 16, color: "#c084fc" },
+  dragon_plate: { name: "Drachenplatte", icon: "D", type: "armor", rarity: "legendary", defense: 26, color: "#fff2a8" },
   metin_shard: { name: "Metin-Splitter", icon: "*", type: "material", rarity: "rare" },
   pugna_core: { name: "Pugna-Kern", icon: "O", type: "material", rarity: "epic" },
   gem: { name: "Kristall", icon: "<>", type: "material", rarity: "rare" },
@@ -131,6 +139,19 @@ function equippedWeaponItem() {
 
 function weaponUpgradeBonus() {
   return (equippedWeaponItem()?.upgrade || 0) * 3;
+}
+
+function equippedArmorItem() {
+  if (typeof player.armorIndex !== "number" || player.armorIndex < 0) return null;
+  const entry = player.inventory[player.armorIndex];
+  if (entry && itemDefs[entry.id]?.type === "armor") return entry;
+  return null;
+}
+
+function totalDefense() {
+  const armor = equippedArmorItem();
+  const base = armor ? (itemDefs[armor.id].defense + (armor.upgrade || 0) * 4) : 0;
+  return base + player.armorLevel * 3;
 }
 
 function itemLabel(invItem) {
@@ -176,25 +197,33 @@ function spawnMob(x, y, rank = "mob") {
   });
 }
 
+function difficultyScale() {
+  const players = 1 + Object.keys(remotePlayers || {}).length;
+  return 1 + (players - 1) * 0.35;
+}
+
 function mobStats(rank) {
+  const s = difficultyScale();
   if (rank === "boss") {
     const name = greekBossNames[Math.floor(Math.random() * greekBossNames.length)];
-    return { r: 42, hp: 420, speed: 72, damage: 50, xp: 150, name, color: "#d946ef", scale: 1.55 };
+    return { r: 42, hp: Math.round(680 * s), speed: 84, damage: 72, xp: 220, name, color: "#d946ef", scale: 1.55 };
   }
   if (rank === "miniboss") {
     const name = greekBossNames[Math.floor(Math.random() * greekBossNames.length)];
-    return { r: 34, hp: 165, speed: 82, damage: 36, xp: 62, name, color: "#f97316", scale: 1.28 };
+    return { r: 34, hp: Math.round(260 * s), speed: 96, damage: 52, xp: 96, name, color: "#f97316", scale: 1.28 };
   }
-  if (rank === "elite") return { r: 26, hp: 58, speed: 88, damage: 30, xp: 26, name: "Elite", color: "#c084fc", scale: 1.05 };
-  return { r: 20, hp: 28, speed: 110, damage: 18, xp: 13, name: "Schattenklotz", color: "#b34d54", scale: 0.9 };
+  if (rank === "elite") return { r: 26, hp: Math.round(95 * s), speed: 102, damage: 44, xp: 36, name: "Elite", color: "#c084fc", scale: 1.05 };
+  return { r: 20, hp: Math.round(48 * s), speed: 124, damage: 26, xp: 18, name: "Schattenklotz", color: "#b34d54", scale: 0.9 };
 }
 
 function spawnStone(x, y) {
+  const s = difficultyScale();
+  const hp = Math.round(280 * s);
   stones.push({
     x, y,
     r: 38,
-    hp: 160,
-    maxHp: 160,
+    hp,
+    maxHp: hp,
     pulse: Math.random() * 10,
     hitTimer: 0,
   });
@@ -291,6 +320,7 @@ ui.inventory.addEventListener("click", (event) => {
   const def = itemDefs[invItem.id];
   if (def.type === "potion") usePotion();
   if (def.type === "weapon") equipWeapon(Number(slot.dataset.index));
+  if (def.type === "armor") equipArmor(Number(slot.dataset.index));
 });
 
 ui.authUsername.value = localStorage.getItem("blocpugnaUser") || "";
@@ -390,6 +420,8 @@ async function startMultiplayerSession(username) {
   });
   multiplayerReady = true;
   showToast(`${username} ist verbunden. Freunde sehen dich jetzt auf der Map.`);
+  await startWorldSync();
+  startHostMaintenance();
 }
 
 function colorForName(name) {
@@ -420,6 +452,378 @@ async function syncPresence(force = false) {
     armorLevel: player.armorLevel,
     updatedAt: Date.now(),
   });
+}
+
+// === SHARED WORLD ===
+const HOST_HEARTBEAT_MS = 1800;
+const HOST_TIMEOUT_MS = 5500;
+const WORLD_TICK_MS = 150;
+
+let isHost = false;
+let currentHostName = null;
+let currentHostTs = 0;
+let worldRefs = null;
+let worldUnsubscribers = [];
+const lootClaimsInFlight = new Set();
+const processedGrants = new Set();
+let hostMaintenanceStarted = false;
+let initialSnapshotApplied = false;
+
+function nextId(prefix) {
+  return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`;
+}
+
+function buildWorldRefs(api) {
+  const base = `blocpugna/rooms/${multiplayerRoom}/world`;
+  return {
+    host: api.ref(api.database, `${base}/host`),
+    mobs: api.ref(api.database, `${base}/mobs`),
+    stones: api.ref(api.database, `${base}/stones`),
+    loot: api.ref(api.database, `${base}/loot`),
+    hits: api.ref(api.database, `${base}/hits`),
+    grants: api.ref(api.database, `${base}/grants`),
+    base,
+  };
+}
+
+function serializeMob(m) {
+  return {
+    x: Math.round(m.x),
+    y: Math.round(m.y),
+    hp: Math.max(0, Math.ceil(m.hp)),
+    maxHp: m.maxHp,
+    r: m.r,
+    rank: m.rank,
+    name: m.name,
+    color: m.color,
+    scale: m.scale,
+    speed: m.speed,
+    damage: m.damage,
+    xp: m.xp,
+    elite: !!m.elite,
+    dmgBy: m.dmgBy || null,
+    ts: Date.now(),
+  };
+}
+
+function serializeStone(s) {
+  return {
+    x: Math.round(s.x),
+    y: Math.round(s.y),
+    hp: Math.max(0, Math.ceil(s.hp)),
+    maxHp: s.maxHp,
+    dmgBy: s.dmgBy || null,
+    ts: Date.now(),
+  };
+}
+
+function applyWorldMobs(map) {
+  if (isHost) return;
+  const seen = new Set();
+  const byId = new Map();
+  for (const m of mobs) if (m.serverId) byId.set(m.serverId, m);
+  for (const [id, raw] of Object.entries(map || {})) {
+    if (!raw) continue;
+    seen.add(id);
+    const ex = byId.get(id);
+    if (ex) {
+      Object.assign(ex, raw);
+    } else {
+      mobs.push({ serverId: id, hitTimer: 0, ...raw });
+    }
+  }
+  // remove ghosts: anything not present in the authoritative snapshot,
+  // including locally-seeded mobs without a serverId
+  for (let i = mobs.length - 1; i >= 0; i -= 1) {
+    if (!mobs[i].serverId || !seen.has(mobs[i].serverId)) mobs.splice(i, 1);
+  }
+  initialSnapshotApplied = true;
+}
+
+function applyWorldStones(map) {
+  if (isHost) return;
+  const seen = new Set();
+  const byId = new Map();
+  for (const s of stones) if (s.serverId) byId.set(s.serverId, s);
+  for (const [id, raw] of Object.entries(map || {})) {
+    if (!raw) continue;
+    seen.add(id);
+    const ex = byId.get(id);
+    if (ex) {
+      Object.assign(ex, raw);
+    } else {
+      stones.push({ serverId: id, pulse: Math.random() * 10, hitTimer: 0, r: 38, ...raw });
+    }
+  }
+  for (let i = stones.length - 1; i >= 0; i -= 1) {
+    if (!stones[i].serverId || !seen.has(stones[i].serverId)) stones.splice(i, 1);
+  }
+}
+
+function applyWorldLoot(map) {
+  const seen = new Set();
+  const byId = new Map();
+  for (const d of droppedItems) if (d.serverId) byId.set(d.serverId, d);
+  for (const [id, raw] of Object.entries(map || {})) {
+    if (!raw) continue;
+    seen.add(id);
+    const ex = byId.get(id);
+    if (ex) {
+      ex.owner = raw.owner;
+      ex.ownerLockUntil = raw.ownerLockUntil;
+      ex.x = raw.x;
+      ex.y = raw.y;
+    } else {
+      droppedItems.push({ serverId: id, ...raw, bob: Math.random() * 10 });
+    }
+  }
+  for (let i = droppedItems.length - 1; i >= 0; i -= 1) {
+    if (droppedItems[i].serverId && !seen.has(droppedItems[i].serverId)) droppedItems.splice(i, 1);
+  }
+}
+
+function applyGrants(map) {
+  const api = firebaseApi();
+  for (const [id, grant] of Object.entries(map || {})) {
+    if (!grant || processedGrants.has(id)) continue;
+    if (grant.to === authUser) {
+      if (grant.gold) player.gold += grant.gold;
+      if (grant.xp) gainXp(grant.xp);
+      if (grant.kill === "mob") player.mobsKilled += 1;
+      if (grant.kill === "stone") player.stonesKilled += 1;
+      processedGrants.add(id);
+    }
+    if (isHost && api && worldRefs && Date.now() - (grant.ts || 0) > 12000) {
+      api.remove(api.ref(api.database, `${worldRefs.base}/grants/${id}`));
+    }
+  }
+}
+
+async function pushGrant(to, payload) {
+  const api = firebaseApi();
+  if (!api || !worldRefs) return;
+  if (to === authUser) {
+    if (payload.gold) player.gold += payload.gold;
+    if (payload.xp) gainXp(payload.xp);
+    if (payload.kill === "mob") player.mobsKilled += 1;
+    if (payload.kill === "stone") player.stonesKilled += 1;
+    return;
+  }
+  const id = nextId("g");
+  await api.set(api.ref(api.database, `${worldRefs.base}/grants/${id}`), { to, ts: Date.now(), ...payload });
+}
+
+async function publishLoot(loot) {
+  const api = firebaseApi();
+  if (!api || !worldRefs) return;
+  const id = nextId("l");
+  await api.set(api.ref(api.database, `${worldRefs.base}/loot/${id}`), { ...loot, ts: Date.now() });
+}
+
+function topDamager(dmgBy) {
+  if (!dmgBy) return null;
+  let winner = null;
+  let best = -1;
+  for (const [name, dmg] of Object.entries(dmgBy)) {
+    if (dmg > best) { best = dmg; winner = name; }
+  }
+  return winner;
+}
+
+function applyQueuedHit(hit) {
+  const arr = hit.type === "mob" ? mobs : stones;
+  const target = arr.find((t) => t.serverId === hit.id);
+  if (!target) return;
+  target.hp -= hit.dmg;
+  target.hitTimer = 0.16;
+  target.dmgBy = target.dmgBy || {};
+  target.dmgBy[hit.by] = (target.dmgBy[hit.by] || 0) + hit.dmg;
+  if (target.hp <= 0) {
+    if (hit.type === "mob") hostKillMob(target);
+    else hostKillStone(target);
+  }
+}
+
+function pushHit(target, dmg) {
+  if (!multiplayerReady || !worldRefs) return false;
+  const api = firebaseApi();
+  if (!api || !target.serverId) return false;
+  if (isHost) {
+    applyQueuedHit({ type: target.kind, id: target.serverId, dmg, by: authUser, ts: Date.now() });
+  } else {
+    const id = nextId("h");
+    api.set(api.ref(api.database, `${worldRefs.base}/hits/${id}`), {
+      type: target.kind, id: target.serverId, dmg, by: authUser, ts: Date.now(),
+    });
+  }
+  return true;
+}
+
+function hostKillMob(mob) {
+  const idx = mobs.indexOf(mob);
+  if (idx >= 0) mobs.splice(idx, 1);
+  const api = firebaseApi();
+  if (api && worldRefs && mob.serverId) {
+    api.remove(api.ref(api.database, `${worldRefs.base}/mobs/${mob.serverId}`));
+  }
+  const owner = topDamager(mob.dmgBy);
+  dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"), owner);
+  pushGrant(owner || authUser, { xp: mob.xp, kill: "mob" });
+  burst(mob.x, mob.y, mob.color || "#ff6b6b", mob.rank === "boss" ? 70 : mob.rank === "miniboss" ? 42 : 24);
+  if (mob.rank === "boss") showToast(`${mob.name} besiegt: Boss-Loot liegt am Boden.`);
+  else if (mob.rank === "miniboss") showToast(`${mob.name} besiegt: starker Loot liegt am Boden.`);
+  setTimeout(() => {
+    const point = randomPointAwayFromPlayer(680);
+    spawnMob(point.x, point.y, Math.random() < 0.24 ? "elite" : "mob");
+  }, 850);
+}
+
+function hostKillStone(stone) {
+  const idx = stones.indexOf(stone);
+  if (idx >= 0) stones.splice(idx, 1);
+  const api = firebaseApi();
+  if (api && worldRefs && stone.serverId) {
+    api.remove(api.ref(api.database, `${worldRefs.base}/stones/${stone.serverId}`));
+  }
+  const owner = topDamager(stone.dmgBy);
+  dropLoot(stone.x, stone.y, "metin", owner);
+  pushGrant(owner || authUser, { xp: 90, kill: "stone" });
+  burst(stone.x, stone.y, "#c084fc", 50);
+  showToast("Metin-Stein zerstoert: seltener Loot liegt am Boden.");
+  setTimeout(() => {
+    spawnStone(180 + Math.random() * (world.w - 360), 160 + Math.random() * (world.h - 320));
+  }, 7000);
+}
+
+async function claimLoot(entry) {
+  if (!entry.serverId) return;
+  if (lootClaimsInFlight.has(entry.serverId)) return;
+  if (entry.ownerLockUntil && Date.now() < entry.ownerLockUntil && entry.owner && entry.owner !== authUser) return;
+  lootClaimsInFlight.add(entry.serverId);
+  const api = firebaseApi();
+  try {
+    const lootRef = api.ref(api.database, `${worldRefs.base}/loot/${entry.serverId}`);
+    const result = await api.runTransaction(lootRef, (cur) => (cur ? null : undefined));
+    if (result.committed) {
+      addInventory(entry.id, entry.count);
+      const idx = droppedItems.indexOf(entry);
+      if (idx >= 0) droppedItems.splice(idx, 1);
+    }
+  } catch (err) {
+    console.warn("claimLoot", err);
+  } finally {
+    lootClaimsInFlight.delete(entry.serverId);
+  }
+}
+
+async function hostTick() {
+  if (!isHost || !worldRefs) return;
+  const api = firebaseApi();
+  if (!api) return;
+  const mobsOut = {};
+  for (const m of mobs) {
+    if (!m.serverId) m.serverId = nextId("m");
+    mobsOut[m.serverId] = serializeMob(m);
+  }
+  const stonesOut = {};
+  for (const s of stones) {
+    if (!s.serverId) s.serverId = nextId("s");
+    stonesOut[s.serverId] = serializeStone(s);
+  }
+  await Promise.all([
+    api.set(worldRefs.mobs, mobsOut),
+    api.set(worldRefs.stones, stonesOut),
+  ]);
+}
+
+async function hostHeartbeat() {
+  if (!isHost) return;
+  const api = firebaseApi();
+  if (!api || !worldRefs) return;
+  await api.set(worldRefs.host, { name: authUser, ts: Date.now() });
+}
+
+async function tryBecomeHost() {
+  const api = firebaseApi();
+  if (!api || !worldRefs || !authUser) return;
+  try {
+    const result = await api.runTransaction(worldRefs.host, (cur) => {
+      const now = Date.now();
+      if (cur && cur.name && cur.ts && now - cur.ts < HOST_TIMEOUT_MS) return undefined;
+      return { name: authUser, ts: now };
+    });
+    const val = result?.snapshot?.val();
+    if (result.committed && val?.name === authUser) {
+      isHost = true;
+      currentHostName = authUser;
+      showToast("Du bist Host: Welt wird von dir verwaltet.");
+      const existing = await api.get(worldRefs.mobs);
+      const empty = !existing.exists() || Object.keys(existing.val() || {}).length === 0;
+      if (empty) {
+        if (mobs.length === 0 && stones.length === 0) seedWorld();
+        for (const m of mobs) if (!m.serverId) m.serverId = nextId("m");
+        for (const s of stones) if (!s.serverId) s.serverId = nextId("s");
+        await hostTick();
+      }
+      const hitsSnap = await api.get(worldRefs.hits);
+      const queued = hitsSnap.val() || {};
+      for (const [id, hit] of Object.entries(queued)) {
+        if (!hit) continue;
+        applyQueuedHit(hit);
+        api.remove(api.ref(api.database, `${worldRefs.base}/hits/${id}`));
+      }
+    }
+  } catch (err) {
+    console.warn("tryBecomeHost", err);
+  }
+}
+
+async function startWorldSync() {
+  const api = firebaseApi();
+  if (!api) return;
+  worldRefs = buildWorldRefs(api);
+
+  worldUnsubscribers.push(api.onValue(worldRefs.host, (snap) => {
+    const val = snap.val();
+    currentHostName = val?.name || null;
+    currentHostTs = val?.ts || 0;
+    if (isHost && currentHostName && currentHostName !== authUser) {
+      isHost = false;
+      showToast(`Host-Wechsel: ${currentHostName} verwaltet jetzt die Welt.`);
+    }
+  }));
+
+  worldUnsubscribers.push(api.onValue(worldRefs.mobs, (snap) => applyWorldMobs(snap.val())));
+  worldUnsubscribers.push(api.onValue(worldRefs.stones, (snap) => applyWorldStones(snap.val())));
+  worldUnsubscribers.push(api.onValue(worldRefs.loot, (snap) => applyWorldLoot(snap.val())));
+  worldUnsubscribers.push(api.onValue(worldRefs.grants, (snap) => applyGrants(snap.val())));
+  worldUnsubscribers.push(api.onValue(worldRefs.hits, (snap) => {
+    if (!isHost) return;
+    const all = snap.val() || {};
+    for (const [id, hit] of Object.entries(all)) {
+      if (!hit) continue;
+      applyQueuedHit(hit);
+      api.remove(api.ref(api.database, `${worldRefs.base}/hits/${id}`));
+    }
+  }));
+
+  await tryBecomeHost();
+}
+
+function startHostMaintenance() {
+  if (hostMaintenanceStarted) return;
+  hostMaintenanceStarted = true;
+  setInterval(async () => {
+    if (!multiplayerReady) return;
+    if (isHost) {
+      await hostHeartbeat();
+    } else if (!currentHostName || Date.now() - currentHostTs > HOST_TIMEOUT_MS) {
+      await tryBecomeHost();
+    }
+  }, HOST_HEARTBEAT_MS);
+  setInterval(() => {
+    if (isHost) hostTick();
+  }, WORLD_TICK_MS);
 }
 
 function dist(a, b) {
@@ -562,9 +966,13 @@ function isInCone(target, angle, range, radius) {
 }
 
 function damageMob(mob, amount) {
-  mob.hp -= amount;
-  mob.hitTimer = 0.14;
   floatText(mob.x, mob.y - 28 - mob.r * 0.35, `-${amount}`, player.swordAura > 0 ? "#ff343f" : "#f4c95d");
+  mob.hitTimer = 0.14;
+  if (multiplayerReady && mob.serverId) {
+    pushHit({ kind: "mob", serverId: mob.serverId }, amount);
+    return;
+  }
+  mob.hp -= amount;
   if (mob.hp <= 0) {
     const index = mobs.indexOf(mob);
     if (index >= 0) mobs.splice(index, 1);
@@ -582,10 +990,14 @@ function damageMob(mob, amount) {
 }
 
 function damageStone(stone, amount) {
-  stone.hp -= amount;
-  stone.hitTimer = 0.16;
   floatText(stone.x, stone.y - 50, `-${amount}`, "#55d7ff");
   burst(stone.x, stone.y, "#55d7ff", 8);
+  stone.hitTimer = 0.16;
+  if (multiplayerReady && stone.serverId) {
+    pushHit({ kind: "stone", serverId: stone.serverId }, amount);
+    return;
+  }
+  stone.hp -= amount;
   if (stone.hp <= 0) {
     const index = stones.indexOf(stone);
     if (index >= 0) stones.splice(index, 1);
@@ -598,47 +1010,98 @@ function damageStone(stone, amount) {
   }
 }
 
-function dropLoot(x, y, source) {
+function armorDrop(source) {
+  const roll = Math.random();
+  if (source === "boss") {
+    if (roll < 0.32) return "dragon_plate";
+    if (roll < 0.68) return "steel_armor";
+    return "iron_armor";
+  }
+  if (source === "miniboss") {
+    if (roll < 0.12) return "dragon_plate";
+    if (roll < 0.45) return "steel_armor";
+    if (roll < 0.78) return "iron_armor";
+    return "leather_armor";
+  }
+  if (source === "metin") {
+    if (roll < 0.06) return "dragon_plate";
+    if (roll < 0.28) return "steel_armor";
+    if (roll < 0.58) return "iron_armor";
+    return "leather_armor";
+  }
+  if (source === "elite") {
+    if (roll < 0.10) return "steel_armor";
+    if (roll < 0.40) return "iron_armor";
+    return "leather_armor";
+  }
+  return "leather_armor";
+}
+
+function dropLoot(x, y, source, owner = null) {
   const drops = source === "boss"
     ? [
         item("health_potion", 2),
         item("pugna_core", 2),
         item(bossWeaponDrop(), 1),
         item("metin_shard", 4),
+        item(armorDrop(source), 1),
       ]
     : source === "miniboss"
       ? [
           item("health_potion", 1),
           item(Math.random() < 0.45 ? "pugna_core" : "gem", 1),
           item(Math.random() < 0.22 ? "fullmoon_sickle" : metinWeaponDrop(), 1),
+          item(armorDrop(source), Math.random() < 0.85 ? 1 : 0),
         ]
       : source === "metin"
     ? [
         item("metin_shard", 2 + Math.floor(Math.random() * 3)),
         item(Math.random() < 0.45 ? "pugna_core" : "gem", 1),
         item(metinWeaponDrop(), 1),
+        item(armorDrop(source), Math.random() < 0.55 ? 1 : 0),
       ]
     : [
         item("health_potion", Math.random() < 0.26 ? 1 : 0),
         item("gem", Math.random() < 0.12 ? 1 : 0),
         item("iron_blade", source === "elite" && Math.random() < 0.22 ? 1 : 0),
+        item(armorDrop(source), source === "elite" ? (Math.random() < 0.32 ? 1 : 0) : (Math.random() < 0.07 ? 1 : 0)),
       ];
 
-  for (const drop of drops.filter((entry) => entry.count > 0)) {
-    droppedItems.push({
-      ...drop,
-      x: x + (Math.random() - 0.5) * 54,
-      y: y + (Math.random() - 0.5) * 54,
-      bob: Math.random() * 10,
-    });
-  }
-  player.gold += source === "boss"
+  const goldAmount = source === "boss"
     ? 90 + Math.floor(Math.random() * 55)
     : source === "miniboss"
       ? 38 + Math.floor(Math.random() * 24)
       : source === "metin"
         ? 22 + Math.floor(Math.random() * 18)
         : 4 + Math.floor(Math.random() * 7);
+
+  if (multiplayerReady && isHost) {
+    for (const drop of drops.filter((entry) => entry.count > 0)) {
+      publishLoot({
+        id: drop.id,
+        count: drop.count,
+        x: x + (Math.random() - 0.5) * 54,
+        y: y + (Math.random() - 0.5) * 54,
+        owner,
+        ownerLockUntil: owner ? Date.now() + 6000 : 0,
+      });
+    }
+    if (owner) {
+      pushGrant(owner, { gold: goldAmount });
+    } else {
+      player.gold += goldAmount;
+    }
+  } else {
+    for (const drop of drops.filter((entry) => entry.count > 0)) {
+      droppedItems.push({
+        ...drop,
+        x: x + (Math.random() - 0.5) * 54,
+        y: y + (Math.random() - 0.5) * 54,
+        bob: Math.random() * 10,
+      });
+    }
+    player.gold += goldAmount;
+  }
 }
 
 function metinWeaponDrop() {
@@ -671,9 +1134,9 @@ function gainXp(amount) {
 }
 
 function addInventory(id, count = 1) {
-  if (itemDefs[id]?.type === "weapon") {
+  const def = itemDefs[id];
+  if (def?.type === "weapon" || def?.type === "armor") {
     player.inventory.push({ id, count: 1, upgrade: 0 });
-    const def = itemDefs[id];
     showToast(`${def.name} erhalten.`);
     renderInventory();
     return;
@@ -681,7 +1144,6 @@ function addInventory(id, count = 1) {
   const found = player.inventory.find((entry) => entry.id === id);
   if (found) found.count += count;
   else player.inventory.push(item(id, count));
-  const def = itemDefs[id];
   showToast(`${def.name} erhalten.`);
   renderInventory();
 }
@@ -712,6 +1174,16 @@ function equipWeapon(indexOrId) {
   renderInventory();
 }
 
+function equipArmor(index) {
+  const invItem = player.inventory[index];
+  if (!invItem || itemDefs[invItem.id]?.type !== "armor") return;
+  player.armorIndex = index;
+  const def = itemDefs[invItem.id];
+  const upgrade = invItem.upgrade || 0;
+  showToast(`${def.name}${upgrade ? ` +${upgrade}` : ""} angelegt (+${def.defense + upgrade * 4} Verteidigung).`);
+  renderInventory();
+}
+
 function isNearBlacksmith() {
   return Math.hypot(player.x - blacksmith.x, player.y - blacksmith.y) < 105;
 }
@@ -729,7 +1201,9 @@ function upgradeAtBlacksmith(kind) {
     showToast("Gehe zum Schmied, um Upgrades durchzufuehren.");
     return;
   }
-  const targetLevel = kind === "armor" ? player.armorLevel : (equippedWeaponItem()?.upgrade || 0);
+  const targetLevel = kind === "armor"
+    ? (equippedArmorItem()?.upgrade ?? player.armorLevel)
+    : (equippedWeaponItem()?.upgrade || 0);
   if (targetLevel >= 9) {
     showToast(kind === "armor" ? "Ruestung ist bereits +9." : "Waffe ist bereits +9.");
     return;
@@ -741,8 +1215,14 @@ function upgradeAtBlacksmith(kind) {
   }
   payUpgrade(cost);
   if (kind === "armor") {
-    player.armorLevel += 1;
-    showToast(`Ruestung auf +${player.armorLevel} verbessert.`);
+    const armor = equippedArmorItem();
+    if (armor) {
+      armor.upgrade = (armor.upgrade || 0) + 1;
+      showToast(`${itemLabel(armor)} geschmiedet. Verteidigung steigt.`);
+    } else {
+      player.armorLevel += 1;
+      showToast(`Basis-Ruestung auf +${player.armorLevel} verbessert (keine Rüstung ausgerüstet).`);
+    }
   } else {
     const weapon = equippedWeaponItem();
     if (!weapon) return;
@@ -840,20 +1320,23 @@ function update(dt) {
       size: 3 + Math.random() * 4,
     });
   }
-  waveTimer -= dt;
-  minibossTimer -= dt;
-  bossTimer -= dt;
-  if (waveTimer <= 0) {
-    spawnMobWave();
-    waveTimer = 3.2 + Math.random() * 3.2;
-  }
-  if (minibossTimer <= 0) {
-    spawnSpecialMob("miniboss");
-    minibossTimer = 28 + Math.random() * 20;
-  }
-  if (bossTimer <= 0) {
-    spawnSpecialMob("boss");
-    bossTimer = 70 + Math.random() * 35;
+  const runHostSim = !multiplayerReady || isHost;
+  if (runHostSim) {
+    waveTimer -= dt;
+    minibossTimer -= dt;
+    bossTimer -= dt;
+    if (waveTimer <= 0) {
+      spawnMobWave();
+      waveTimer = 2.4 + Math.random() * 2.8;
+    }
+    if (minibossTimer <= 0) {
+      spawnSpecialMob("miniboss");
+      minibossTimer = 22 + Math.random() * 18;
+    }
+    if (bossTimer <= 0) {
+      spawnSpecialMob("boss");
+      bossTimer = 55 + Math.random() * 30;
+    }
   }
 
   for (const mob of mobs) {
@@ -861,14 +1344,15 @@ function update(dt) {
     const dx = player.x - mob.x;
     const dy = player.y - mob.y;
     const d = Math.hypot(dx, dy) || 1;
-    if (d < 520) {
+    if (runHostSim && d < 520) {
       mob.x += (dx / d) * mob.speed * dt;
       mob.y += (dy / d) * mob.speed * dt;
     }
     if (d < player.r + mob.r && player.invuln <= 0) {
-      const mitigatedDamage = Math.max(2, mob.damage - player.armorLevel * 3);
+      const def = totalDefense();
+      const mitigatedDamage = Math.max(3, Math.ceil(mob.damage * 0.65 + mob.damage * 0.35 - def));
       player.hp -= mitigatedDamage;
-      player.invuln = 0.65;
+      player.invuln = 0.5;
       floatText(player.x, player.y - 36, `-${mitigatedDamage}`, "#ff5d62");
       if (player.hp <= 0) showToast("Du wurdest besiegt. Druecke R fuer Neustart.");
     }
@@ -883,8 +1367,13 @@ function update(dt) {
     const entry = droppedItems[i];
     entry.bob += dt * 5;
     if (Math.hypot(entry.x - player.x, entry.y - player.y) < 48) {
-      addInventory(entry.id, entry.count);
-      droppedItems.splice(i, 1);
+      if (multiplayerReady && entry.serverId) {
+        if (entry.ownerLockUntil && Date.now() < entry.ownerLockUntil && entry.owner && entry.owner !== authUser) continue;
+        claimLoot(entry);
+      } else {
+        addInventory(entry.id, entry.count);
+        droppedItems.splice(i, 1);
+      }
     }
   }
 
@@ -900,12 +1389,15 @@ function update(dt) {
 }
 
 function spawnMobWave() {
-  const maxMobs = 44 + Math.min(player.level * 2, 16);
+  const playerCount = 1 + Object.keys(remotePlayers || {}).length;
+  const maxMobs = 56 + Math.min(player.level * 2, 20) + playerCount * 8;
   if (mobs.length >= maxMobs) return;
-  const amount = 2 + Math.floor(Math.random() * 4);
+  const amount = 3 + Math.floor(Math.random() * 4) + Math.floor(playerCount * 0.5);
   for (let i = 0; i < amount && mobs.length < maxMobs; i += 1) {
-    const point = randomPointAwayFromPlayer(650);
-    spawnMob(point.x, point.y, Math.random() < 0.18 ? "elite" : "mob");
+    const point = randomPointAwayFromPlayer(620);
+    const roll = Math.random();
+    const rank = roll < 0.06 ? "elite" : roll < 0.30 ? "elite" : "mob";
+    spawnMob(point.x, point.y, rank);
   }
 }
 
@@ -952,7 +1444,9 @@ function updateUi() {
   ui.levelText.textContent = player.level;
   ui.goldText.textContent = player.gold;
   ui.attackText.textContent = attackPower();
-  ui.armorText.textContent = `+${player.armorLevel}`;
+  const armor = equippedArmorItem();
+  const totalDef = totalDefense();
+  ui.armorText.textContent = armor ? `${itemDefs[armor.id].name.split(" ")[0]} +${armor.upgrade || 0} (${totalDef})` : `+${player.armorLevel} (${totalDef})`;
   updateBlacksmithUi();
   updateSkillButton(ui.skillAura, player.auraCooldown, 18, player.swordAura > 0 ? `Aktiv ${player.swordAura.toFixed(1)}s` : "Schwertverbesserung");
   updateSkillButton(ui.skillCrescent, player.crescentCooldown, currentWeapon().id === "fullmoon_sickle" ? 5.5 : 8, "Sichelhieb");
@@ -994,8 +1488,14 @@ function renderInventory() {
     }
     const def = itemDefs[invItem.id];
     slot.classList.add(def.rarity);
-    if (player.weaponIndex === i) slot.classList.add("equipped");
-    slot.title = `${itemLabel(invItem)}${def.attack ? ` (+${def.attack + (invItem.upgrade || 0) * 3} Angriff, ausruesten per Klick)` : ""}`;
+    if (def.type === "weapon" && player.weaponIndex === i) slot.classList.add("equipped");
+    if (def.type === "armor" && player.armorIndex === i) slot.classList.add("equipped");
+    const stat = def.attack
+      ? ` (+${def.attack + (invItem.upgrade || 0) * 3} Angriff)`
+      : def.defense
+        ? ` (+${def.defense + (invItem.upgrade || 0) * 4} Verteidigung)`
+        : "";
+    slot.title = `${itemLabel(invItem)}${stat}${def.type === "weapon" || def.type === "armor" ? " — Klick zum ausruesten" : ""}`;
     slot.setAttribute("aria-label", slot.title);
     const upgrade = invItem.upgrade ? `<span class="upgrade">+${invItem.upgrade}</span>` : "";
     slot.innerHTML = `<span class="icon">${def.icon}</span>${upgrade}<span class="count">${invItem.count}</span>`;
@@ -1020,6 +1520,8 @@ function draw() {
   drawParticles();
   drawFloatingText();
   ctx.restore();
+
+  drawMinimap();
 
   if (player.hp <= 0) drawDeathScreen();
 }
@@ -1281,18 +1783,67 @@ function drawHealth(x, y, w, pct) {
 }
 
 function drawDroppedItems() {
+  const now = Date.now();
   for (const entry of droppedItems) {
     const def = itemDefs[entry.id];
     const y = entry.y + Math.sin(entry.bob) * 5;
+    const locked = entry.ownerLockUntil && now < entry.ownerLockUntil && entry.owner;
+    const minePriority = locked && entry.owner === authUser;
     ctx.fillStyle = "rgba(0,0,0,0.24)";
     ctx.fillRect(entry.x - 14, y + 15, 28, 8);
+    if (locked) {
+      ctx.strokeStyle = minePriority ? "#51d37a" : "#ff5d62";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(entry.x - 17, y - 17, 34, 34);
+    }
     ctx.fillStyle = def.rarity === "legendary" ? "#fff2a8" : def.rarity === "epic" ? "#c084fc" : def.rarity === "rare" ? "#55d7ff" : "#f4c95d";
     ctx.fillRect(entry.x - 13, y - 13, 26, 26);
     ctx.fillStyle = "#101419";
     ctx.font = "bold 13px sans-serif";
     ctx.textAlign = "center";
     ctx.fillText(def.icon, entry.x, y + 5);
+    if (locked) {
+      ctx.font = "bold 10px sans-serif";
+      ctx.fillStyle = minePriority ? "#51d37a" : "#ff5d62";
+      ctx.fillText(minePriority ? "DEIN" : entry.owner.slice(0, 8), entry.x, y + 28);
+    }
   }
+}
+
+function drawMinimap() {
+  const w = 160;
+  const h = 100;
+  const px = canvas.clientWidth - w - 18;
+  const py = 18;
+  ctx.save();
+  ctx.fillStyle = "rgba(10, 14, 18, 0.72)";
+  ctx.fillRect(px, py, w, h);
+  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
+  const sx = w / world.w;
+  const sy = h / world.h;
+  ctx.fillStyle = "#f4c95d";
+  ctx.fillRect(px + blacksmith.x * sx - 2, py + blacksmith.y * sy - 2, 5, 5);
+  ctx.fillStyle = "#55d7ff";
+  for (const stone of stones) ctx.fillRect(px + stone.x * sx - 2, py + stone.y * sy - 2, 4, 4);
+  for (const mob of mobs) {
+    if (mob.rank === "boss") { ctx.fillStyle = "#d946ef"; ctx.fillRect(px + mob.x * sx - 3, py + mob.y * sy - 3, 6, 6); }
+    else if (mob.rank === "miniboss") { ctx.fillStyle = "#f97316"; ctx.fillRect(px + mob.x * sx - 2, py + mob.y * sy - 2, 5, 5); }
+    else { ctx.fillStyle = mob.elite ? "#c084fc" : "#ff6b6b"; ctx.fillRect(px + mob.x * sx - 1, py + mob.y * sy - 1, 2, 2); }
+  }
+  for (const remote of Object.values(remotePlayers)) {
+    if (!remote) continue;
+    ctx.fillStyle = remote.color || "#51d37a";
+    ctx.fillRect(px + remote.x * sx - 2, py + remote.y * sy - 2, 4, 4);
+  }
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(px + player.x * sx - 2, py + player.y * sy - 2, 5, 5);
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = isHost ? "#51d37a" : "#9faebd";
+  ctx.fillText(multiplayerReady ? (isHost ? `HOST: ${authUser}` : `Host: ${currentHostName || "—"}`) : "Solo", px + 4, py + h - 6);
+  ctx.restore();
 }
 
 function drawParticles() {
@@ -1362,6 +1913,7 @@ function resetProgressAfterDeath() {
   player.stonesKilled = 0;
   player.weapon = defaultPlayerState.weapon;
   player.weaponIndex = defaultPlayerState.weaponIndex;
+  player.armorIndex = defaultPlayerState.armorIndex;
   player.inventory = defaultPlayerState.inventory.map((entry) => ({ ...entry }));
 }
 
