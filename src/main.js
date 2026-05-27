@@ -161,6 +161,10 @@ let portalCooldown = 0;
 let preArenaWorldId = "meadows";
 let uiThrottle = 0;
 let hitStopTimer = 0;
+const dyingMobs = []; // { x, y, color, scale, life, maxLife, rot }
+let comboCount = 0;
+let comboTimer = 0;
+let comboMaxDmg = 0;
 let traderMode = "buy";
 let trainerLastReset = 0;
 let courierState = null;
@@ -429,14 +433,15 @@ function rollCrit() {
 }
 
 function applyCritAndLifesteal(amount) {
-  let dmg = amount;
+  let dmg = amount * comboDamageMult();
   let crit = false;
   if (rollCrit()) {
-    dmg = Math.round(amount * 1.85);
+    dmg = Math.round(dmg * 1.85);
     crit = true;
     sfx.crit();
     hitStopTimer = Math.max(hitStopTimer, 0.08);
   } else {
+    dmg = Math.round(dmg);
     sfx.hit();
   }
   const ls = totalLifesteal();
@@ -2755,12 +2760,24 @@ function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y);
 }
 
+const camState = { x: 0, y: 0, lookX: 0, lookY: 0 };
 function camera() {
   const w = canvas.clientWidth;
   const h = canvas.clientHeight;
+  // Lookahead in Maus-Richtung (max 80px)
+  const aim = Math.atan2(mouse.y - h / 2, mouse.x - w / 2);
+  const targetLookX = Math.cos(aim) * 80;
+  const targetLookY = Math.sin(aim) * 80;
+  camState.lookX += (targetLookX - camState.lookX) * 0.08;
+  camState.lookY += (targetLookY - camState.lookY) * 0.08;
+  const targetX = clamp(player.x + camState.lookX - w / 2, 0, world.w - w);
+  const targetY = clamp(player.y + camState.lookY - h / 2, 0, world.h - h);
+  // Lerp Camera-Position
+  camState.x += (targetX - camState.x) * 0.12;
+  camState.y += (targetY - camState.y) * 0.12;
   return {
-    x: clamp(player.x - w / 2, 0, world.w - w),
-    y: clamp(player.y - h / 2, 0, world.h - h),
+    x: camState.x,
+    y: camState.y,
     w,
     h,
   };
@@ -3082,6 +3099,64 @@ function drawLavaPools() {
       ctx.arc(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, 6, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+}
+
+function drawComboHud() {
+  if (comboCount < 2) return;
+  const x = canvas.clientWidth / 2;
+  const y = 60;
+  const pct = comboTimer / 2.5;
+  const tier = Math.min(5, Math.floor(comboCount / 3));
+  const color = ["#86efac", "#fbbf24", "#fb923c", "#f97316", "#ef4444", "#d946ef"][tier];
+  ctx.save();
+  ctx.font = `bold ${28 + tier * 4}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 16;
+  ctx.fillText(`${comboCount} COMBO`, x, y);
+  ctx.shadowBlur = 0;
+  ctx.font = "bold 11px sans-serif";
+  ctx.fillStyle = "#cbd5e1";
+  ctx.fillText(`+${tier * 5}% Damage  |  Timer ${comboTimer.toFixed(1)}s`, x, y + 14);
+  // Timer-Bar
+  const bw = 160;
+  ctx.fillStyle = "rgba(10,14,18,0.7)";
+  ctx.fillRect(x - bw / 2, y + 20, bw, 4);
+  ctx.fillStyle = color;
+  ctx.fillRect(x - bw / 2, y + 20, bw * Math.max(0, pct), 4);
+  ctx.restore();
+}
+
+function comboDamageMult() {
+  const tier = Math.min(5, Math.floor(comboCount / 3));
+  return 1 + tier * 0.05;
+}
+
+function drawDyingMobs() {
+  for (const d of dyingMobs) {
+    const pct = d.life / d.maxLife;
+    const scale = d.scale * pct;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, pct);
+    ctx.translate(d.x, d.y);
+    ctx.rotate(d.rot * (1 - pct));
+    // Generischer Block-Person
+    ctx.fillStyle = d.color;
+    ctx.fillRect(-18 * scale, -22 * scale, 36 * scale, 34 * scale);
+    ctx.fillStyle = "#f3c7a1";
+    ctx.fillRect(-15 * scale, -54 * scale, 30 * scale, 30 * scale);
+    ctx.restore();
+    // Fading ring
+    ctx.save();
+    ctx.globalAlpha = pct * 0.5;
+    ctx.strokeStyle = d.color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(d.x, d.y, (1 - pct) * 60, 0, Math.PI * 2);
+    ctx.stroke();
     ctx.restore();
   }
 }
@@ -3685,6 +3760,20 @@ function damageMob(mob, amount, options = {}) {
   if (mob.hp <= 0) {
     const index = mobs.indexOf(mob);
     if (index >= 0) mobs.splice(index, 1);
+    // Sterbe-Animation
+    dyingMobs.push({
+      x: mob.x, y: mob.y,
+      color: mob.color || "#b34d54",
+      scale: mob.scale || 1,
+      skin: mob.skin || null,
+      bossDef: mob.bossDef || null,
+      life: 0.5,
+      maxLife: 0.5,
+      rot: (Math.random() - 0.5) * 6,
+    });
+    // Combo
+    comboCount += 1;
+    comboTimer = 2.5;
     player.mobsKilled += 1;
     trackCourierKill();
     gainXp(mob.xp);
@@ -4434,7 +4523,8 @@ function removeInventory(id, count) {
 }
 
 function floatText(x, y, text, color) {
-  floatingText.push({ x, y, text, color, life: 0.75 });
+  const isImportant = text && (text.includes("CRIT") || text.includes("KOMBO"));
+  floatingText.push({ x, y, text, color, life: isImportant ? 1.0 : 0.75, maxLife: isImportant ? 1.0 : 0.75 });
 }
 
 function burst(x, y, color, amount) {
@@ -4881,6 +4971,17 @@ function update(dt) {
   updatePvpBot(dt);
   updatePet(dt);
   updateShadowDecoy(dt);
+  // Dying mobs animieren
+  for (let i = dyingMobs.length - 1; i >= 0; i -= 1) {
+    dyingMobs[i].life -= dt;
+    dyingMobs[i].rot += dt * 6;
+    if (dyingMobs[i].life <= 0) dyingMobs.splice(i, 1);
+  }
+  // Combo-Decay
+  if (comboTimer > 0) {
+    comboTimer -= dt;
+    if (comboTimer <= 0) { comboCount = 0; comboMaxDmg = 0; }
+  }
   if (player.invisTimer > 0) player.invisTimer -= dt;
   if (cameraShake > 0) cameraShake = Math.max(0, cameraShake - dt * 2.5);
   if (portalCooldown > 0) portalCooldown = Math.max(0, portalCooldown - dt);
@@ -5316,6 +5417,7 @@ function draw() {
   drawRemotePlayers();
   drawLavaPools();
   drawBossCharges();
+  drawDyingMobs();
   drawCrescentWaves();
   drawWeaponTrails();
   drawProjectiles();
@@ -5330,6 +5432,7 @@ function draw() {
   drawSkillFlashes();
   drawLowHpVignette();
   drawMinimap();
+  drawComboHud();
 
   if (player.hp <= 0) drawDeathScreen();
 }
@@ -5365,15 +5468,18 @@ function drawGround(cam) {
   }
 }
 
-function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, accent = null, accentColor = null) {
+function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, accent = null, accentColor = null, walkPhase = 0, breath = 0) {
   ctx.save();
-  ctx.translate(x, y);
+  ctx.translate(x, y + breath);
   ctx.rotate(facing * 0.08);
   ctx.fillStyle = "rgba(0,0,0,0.24)";
   ctx.fillRect(-20 * scale, 16 * scale, 40 * scale, 10 * scale);
+  // Walking-Beine: alternierend hoch/runter
+  const legA = Math.sin(walkPhase) * 4;
+  const legB = -legA;
   ctx.fillStyle = hurt ? "#ffffff" : colors.legs;
-  ctx.fillRect(-16 * scale, 8 * scale, 12 * scale, 24 * scale);
-  ctx.fillRect(4 * scale, 8 * scale, 12 * scale, 24 * scale);
+  ctx.fillRect(-16 * scale, (8 + legA) * scale, 12 * scale, (24 - Math.abs(legA)) * scale);
+  ctx.fillRect(4 * scale, (8 + legB) * scale, 12 * scale, (24 - Math.abs(legB)) * scale);
   ctx.fillStyle = hurt ? "#ffffff" : colors.body;
   ctx.fillRect(-18 * scale, -22 * scale, 36 * scale, 34 * scale);
   // Cloak/hood drape for shadow
@@ -5383,8 +5489,10 @@ function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, acce
     ctx.fillRect(-20 * scale, -4 * scale, 40 * scale, 18 * scale);
   }
   ctx.fillStyle = hurt ? "#ffffff" : colors.arms;
-  ctx.fillRect(-32 * scale, -18 * scale, 12 * scale, 32 * scale);
-  ctx.fillRect(20 * scale, -18 * scale, 12 * scale, 32 * scale);
+  // Arme schwingen gegenphasig zu Beinen
+  const armA = Math.sin(walkPhase) * 3;
+  ctx.fillRect(-32 * scale, (-18 - armA) * scale, 12 * scale, 32 * scale);
+  ctx.fillRect(20 * scale, (-18 + armA) * scale, 12 * scale, 32 * scale);
   ctx.fillStyle = hurt ? "#ffffff" : colors.head;
   ctx.fillRect(-15 * scale, -54 * scale, 30 * scale, 30 * scale);
   ctx.fillStyle = "#14181f";
@@ -5983,6 +6091,18 @@ function drawPlayer() {
   mouse.worldY = mouse.y + cam.y;
   const facing = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
   const invis = (player.invisTimer || 0) > 0;
+  // Bewegungs-Phase berechnen
+  if (player.lastX === undefined) { player.lastX = player.x; player.lastY = player.y; player.walkPhase = 0; }
+  const moved = Math.hypot(player.x - player.lastX, player.y - player.lastY);
+  player.lastX = player.x;
+  player.lastY = player.y;
+  if (moved > 0.5) {
+    player.walkPhase = (player.walkPhase || 0) + moved * 0.05;
+  } else {
+    // Idle: walkPhase zurück Richtung 0
+    player.walkPhase = (player.walkPhase || 0) * 0.92;
+  }
+  const breath = moved < 0.5 ? Math.sin(performance.now() / 700) * 1.2 : 0;
   ctx.save();
   if (invis) ctx.globalAlpha = 0.28;
   drawBlockPerson(player.x, player.y, {
@@ -5991,7 +6111,7 @@ function drawPlayer() {
     arms: "#f3c7a1",
     legs: classDef.id === "warrior" ? "#5d2f28" : classDef.id === "shadow" ? "#26214f" : "#21513d",
   }, 1.05, facing, player.invuln > 0 && Math.floor(performance.now() / 80) % 2 === 0,
-    classDef.bodyAccent, classDef.accent);
+    classDef.bodyAccent, classDef.accent, player.walkPhase, breath);
   drawEquippedWeapon(facing, classDef);
   ctx.restore();
   // Dash-Crit-Window-Aura
@@ -6214,9 +6334,20 @@ function drawMob(mob) {
   }
 }
 
+function updateMobAnimState(mob) {
+  if (mob.lastX === undefined) { mob.lastX = mob.x; mob.lastY = mob.y; mob.walkPhase = 0; }
+  const moved = Math.hypot(mob.x - mob.lastX, mob.y - mob.lastY);
+  mob.lastX = mob.x;
+  mob.lastY = mob.y;
+  if (moved > 0.3) mob.walkPhase = (mob.walkPhase || 0) + moved * 0.06;
+  else mob.walkPhase = (mob.walkPhase || 0) * 0.9;
+  return { walkPhase: mob.walkPhase || 0, breath: moved < 0.3 ? Math.sin(performance.now() / 600 + mob.x * 0.01) * 1.5 : 0 };
+}
+
 function drawSkinnedMob(mob) {
   const s = mob.skin;
   const scale = mob.scale || (mob.elite ? 1.05 : 0.9);
+  const anim = updateMobAnimState(mob);
   if (s.shape === "quad") {
     // Vierbeiner — flacher Body, längere Beine seitlich
     ctx.save();
@@ -6266,11 +6397,9 @@ function drawSkinnedMob(mob) {
     ctx.fillRect(3 * scale, -24 * scale, 3 * scale, 3 * scale);
     ctx.restore();
   } else if (s.shape === "imp") {
-    // Kleiner Imp — kurz und stämmig
-    drawBlockPerson(mob.x, mob.y, { head: s.head, body: s.body, arms: s.arms, legs: s.legs }, scale * 0.78, 0, mob.hitTimer > 0, s.accent, s.accentColor);
+    drawBlockPerson(mob.x, mob.y, { head: s.head, body: s.body, arms: s.arms, legs: s.legs }, scale * 0.78, 0, mob.hitTimer > 0, s.accent, s.accentColor, anim.walkPhase * 1.4, anim.breath);
   } else {
-    // humanoid (Default)
-    drawBlockPerson(mob.x, mob.y, { head: s.head, body: s.body, arms: s.arms, legs: s.legs }, scale, 0, mob.hitTimer > 0, s.accent, s.accentColor);
+    drawBlockPerson(mob.x, mob.y, { head: s.head, body: s.body, arms: s.arms, legs: s.legs }, scale, 0, mob.hitTimer > 0, s.accent, s.accentColor, anim.walkPhase, anim.breath);
   }
 }
 
@@ -6306,7 +6435,10 @@ function drawBossMob(mob) {
   ctx.fillStyle = app.aura || "rgba(255, 255, 255, 0.18)";
   ctx.fill();
   ctx.restore();
-  drawBlockPerson(mob.x, mob.y, { head: app.head, body: app.body, arms: app.arms, legs: app.legs }, mob.scale || 1.6, 0, mob.hitTimer > 0, app.accent, app.accentColor);
+  const anim = updateMobAnimState(mob);
+  // Bosse atmen deutlich sichtbar
+  const bossBreath = Math.sin(performance.now() / 500 + mob.x * 0.005) * 3;
+  drawBlockPerson(mob.x, mob.y, { head: app.head, body: app.body, arms: app.arms, legs: app.legs }, mob.scale || 1.6, 0, mob.hitTimer > 0, app.accent, app.accentColor, anim.walkPhase * 0.6, bossBreath);
   // Phasen-Indikator (Ring um Boss-Fuß)
   const phase = mob.bossPhase || 1;
   ctx.save();
@@ -6537,12 +6669,26 @@ function drawParticles() {
 }
 
 function drawFloatingText() {
-  ctx.font = "bold 18px sans-serif";
   ctx.textAlign = "center";
   for (const text of floatingText) {
-    ctx.globalAlpha = clamp(text.life * 1.6, 0, 1);
+    const t = text.life;
+    const max = text.maxLife || 1.2;
+    const pct = t / max;
+    // Pop-Animation: schnell groß werden, dann normalisieren
+    const popPhase = Math.min(1, (max - t) / 0.15);
+    const scale = 0.6 + popPhase * 0.7;
+    const wobble = Math.sin((max - t) * 18) * 2 * pct;
+    const isImportant = text.text && (text.text.includes("CRIT") || text.text.includes("KOMBO"));
+    const baseSize = isImportant ? 22 : 16;
+    ctx.font = `bold ${baseSize * scale}px sans-serif`;
+    ctx.globalAlpha = clamp(pct * 1.6, 0, 1);
+    if (isImportant) {
+      ctx.shadowColor = text.color;
+      ctx.shadowBlur = 12;
+    }
     ctx.fillStyle = text.color;
-    ctx.fillText(text.text, text.x, text.y);
+    ctx.fillText(text.text, text.x + wobble, text.y);
+    ctx.shadowBlur = 0;
   }
   ctx.globalAlpha = 1;
 }
