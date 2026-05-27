@@ -9,6 +9,8 @@ import { rollDrops, dropTables, getDropTable } from "./data/drops.js";
 import { mobPools } from "./data/mobs.js";
 import { sfx, setSoundEnabled, isSoundEnabled } from "./audio.js";
 import { npcs, shopItems, sellPrices, dailyQuests } from "./data/npcs.js";
+import { groundEffects, updateGroundEffects, drawGroundEffects, clearGroundEffects } from "./effects/groundEffects.js";
+import * as anim from "./effects/animHelpers.js";
 
 const canvas = document.querySelector("#game");
 const ctx = canvas.getContext("2d");
@@ -3948,31 +3950,31 @@ function meteor() {
 }
 
 function rootSnare() {
+  const m = mastery("rootSnare");
   const angle = aimAngle();
+  const range = 220 + m * 20;
+  const dur = 3 + m * 0.4;
   let rooted = 0;
   for (const mob of [...mobs]) {
-    if (!isInCone(mob, angle, 220, 95)) continue;
-    applyStatus(mob, "stunned", 3);
+    if (!isInCone(mob, angle, range, 95)) continue;
+    applyStatus(mob, "stunned", dur);
     damageMob(mob, Math.floor(attackPower() * 0.5), { tag: "stun" });
-    // Visualisierung
-    for (let i = 0; i < 8; i += 1) {
-      particles.push({
-        x: mob.x + (Math.random() - 0.5) * 30,
-        y: mob.y + 20,
-        vx: 0,
-        vy: -80 - Math.random() * 60,
-        life: 0.6,
-        color: "#3f7d35",
-        size: 4,
-      });
-    }
+    // Persistente Wurzeln am Boden um den Mob — bleiben so lange wie der Stun
+    anim.spawnRootsAt(mob.x, mob.y, 45, dur);
+    // Erd-Puff
+    anim.spawnDustPuff(particles, mob.x, mob.y + 14, "#65a30d", 10);
     rooted += 1;
+  }
+  // Erd-Wurzeln in Linie zum Cone (Telegraph wo Skill hingeht)
+  for (let i = 0; i < 3; i += 1) {
+    const dist = 60 + i * 60;
+    anim.spawnRootsAt(player.x + Math.cos(angle) * dist, player.y + Math.sin(angle) * dist, 35, 1.2);
   }
   showToast(`${rooted} Gegner verwurzelt.`);
 }
 
 function swarmCall() {
-  // 5 Insekten spawnen
+  // 5 Insekten spawnen (Original-Logik) + dichte Pixel-Wolke fuer Visual
   for (let i = 0; i < 5; i += 1) {
     const a = (i / 5) * Math.PI * 2;
     insectSwarm.push({
@@ -3984,6 +3986,11 @@ function swarmCall() {
       damage: Math.round(attackPower() * 0.18),
     });
   }
+  // Initialer Schwarm-Burst (Wolke vom Spieler)
+  anim.spawnSwarmCloud(particles, player.x, player.y, "#a3e635");
+  // Summen-Schockwelle
+  anim.spawnRoar(player.x, player.y, "#65a30d");
+  showToast("Insekten-Schwarm beschworen!");
 }
 
 function bearForm() {
@@ -3992,6 +3999,11 @@ function bearForm() {
   player.maxHp += player.bearFormMaxHpBoost;
   player.hp += player.bearFormMaxHpBoost;
   showToast("Bär-Form aktiv: +50% HP, +40% Schaden!");
+  // Bruell-Schockwelle (2 expandierende Ringe)
+  anim.spawnRoar(player.x, player.y, "#92400e");
+  // Erd-Puff (Bärin landet hart)
+  anim.spawnDustPuff(particles, player.x, player.y + 20, "#a16207", 18);
+  // Krater-Spur unter den Pranken
   for (let i = 0; i < 30; i += 1) {
     const a = Math.random() * Math.PI * 2;
     particles.push({
@@ -4034,22 +4046,44 @@ function spawnHearts(x, y, n, color = "#ec4899") {
 }
 
 function poleSpin() {
-  const radius = 110;
-  let hits = 0;
+  const m = mastery ? mastery("poleSpin") : 0;
+  const radius = 110 * (1 + m * 0.12);
+  const dmgMult = 0.55 * (1 + m * 0.12);
   const crit = consumeCharmStacksIfFull();
+  // Visuell: Spieler sichtbar drehen (3 Frames)
+  player.spinAnim = 0.6;
+  // Mehrere Spin-Trail-Ringe versetzt → wirbelnder Effekt
+  anim.spawnSpinAura(player.x, player.y, radius, "#ec4899", 5, 0.08);
+  // Bogen-Trail: helle Linie laeuft 3x um den Spieler
   for (let i = 0; i < 3; i += 1) {
     setTimeout(() => {
+      // Schaden austeilen
       for (const mob of [...mobs]) {
         if (Math.hypot(mob.x - player.x, mob.y - player.y) > radius) continue;
-        const base = Math.floor(attackPower() * 0.55);
+        const base = Math.floor(attackPower() * dmgMult);
         damageMob(mob, crit ? base * 2 : base, { tag: crit ? "crit" : "spin" });
-        hits += 1;
       }
-      spawnHearts(player.x, player.y, 8, "#f472b6");
+      // Herz-Spirale in Spin-Richtung
+      for (let j = 0; j < 12; j += 1) {
+        const a = (j / 12) * Math.PI * 2 + i * 0.4;
+        particles.push({
+          x: player.x + Math.cos(a) * radius * 0.7,
+          y: player.y + Math.sin(a) * radius * 0.7,
+          vx: Math.cos(a + Math.PI / 2) * 80,
+          vy: Math.sin(a + Math.PI / 2) * 80,
+          life: 0.5,
+          color: i % 2 === 0 ? "#ec4899" : "#f472b6",
+          size: 4,
+          heart: true,
+        });
+      }
     }, i * 180);
   }
   addCharmStack();
-  if (crit) player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.08));
+  if (crit) {
+    player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.08));
+    anim.spawnHearts(particles, player.x, player.y, 8, "#f5d042");
+  }
   showToast(crit ? "Anmut! Krit-Wirbel!" : "Wirbelschlag!");
 }
 
@@ -4075,50 +4109,51 @@ function blowKiss() {
     isHeart: true,
     onHit(target) {
       if (!target) return;
-      applyStatus(target, "confused", 4);
+      const mLevel = mastery ? mastery("blowKiss") : 0;
+      applyStatus(target, "confused", 4 + mLevel);
       target.confusedBy = authUser || "lyra";
-      spawnHearts(target.x, target.y, 10, "#ec4899");
+      anim.spawnHearts(particles, target.x, target.y, 12, "#ec4899");
+      anim.applyCharmAura(target); // dauerhafte Herz-Aura ueber Kopf
       floatText(target.x, target.y - 40, "verliebt!", "#f472b6");
     },
   });
+  // Visueller Kuss-Wurf: Wind-up Herzen vom Spieler weg
+  anim.spawnHeartTrail(particles, player.x, player.y - 20, player.x + Math.cos(angle) * 40, player.y + Math.sin(angle) * 40 - 10, 6, "#f472b6");
   if (crit) player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.08));
   addCharmStack();
   showToast("Luftkuss!");
 }
 
 function charmDance() {
-  const radius = 220;
+  const m = mastery ? mastery("charmDance") : 0;
+  const radius = 220 + m * 30;
+  const charmDur = 5 + m;
   let charmed = 0;
   // Spielerin wird 1.5s unverwundbar während Tanz
   player.invuln = Math.max(player.invuln || 0, 1.5);
-  player.charmDanceTimer = 1.5;
-  for (const mob of mobs) {
-    if (mob.bossDef) {
-      // Bosse nicht charmbar, aber kurzer Stun + Toast
-      applyStatus(mob, "stunned", 1);
-      floatText(mob.x, mob.y - 48, "immun", "#fbbf24");
-      continue;
+  player.charmDanceTimer = 1.6;
+  player.spinAnim = 1.6;
+  // Polstange erscheint aus dem Boden mit Gold-Funken + Rosen-Bluetenblaetter
+  anim.spawnPoleDance(player.x, player.y);
+  // Verzoegerte Charm-Welle (0.4s nach Stangen-Spawn)
+  setTimeout(() => {
+    for (const mob of mobs) {
+      if (mob.bossDef) {
+        applyStatus(mob, "stunned", 1.5);
+        floatText(mob.x, mob.y - 48, "immun", "#fbbf24");
+        continue;
+      }
+      if (Math.hypot(mob.x - player.x, mob.y - player.y) > radius) continue;
+      applyStatus(mob, "charmed", charmDur);
+      mob.aggroed = false;
+      mob.confusedBy = authUser || "lyra"; // optional, falls spaeter Kills gezaehlt werden
+      anim.applyCharmAura(mob);
+      charmed += 1;
     }
-    if (Math.hypot(mob.x - player.x, mob.y - player.y) > radius) continue;
-    applyStatus(mob, "charmed", 5);
-    mob.aggroed = false;
-    charmed += 1;
-  }
-  // Visualisierung: Stange aus Boden + Herz-Explosion
-  for (let i = 0; i < 40; i += 1) {
-    const a = (i / 40) * Math.PI * 2;
-    particles.push({
-      x: player.x,
-      y: player.y,
-      vx: Math.cos(a) * 220,
-      vy: Math.sin(a) * 220,
-      life: 0.9,
-      color: i % 2 === 0 ? "#ec4899" : "#f5d042",
-      size: 6,
-      heart: i % 2 === 0,
-    });
-  }
-  showToast(`Tanz der Verfuehrung: ${charmed} Gegner verliebt!`);
+    // Herz-Schockwelle
+    anim.spawnHearts(particles, player.x, player.y, 40, "#ec4899");
+    showToast(`Tanz der Verfuehrung: ${charmed} Gegner verliebt!`);
+  }, 400);
 }
 
 function updateWeather(dt) {
@@ -5670,6 +5705,7 @@ function update(dt) {
   updateParticles(dt);
   updateProjectiles(dt);
   updateSkillFlashes(dt);
+  updateGroundEffects(dt);
   updateLavaPools(dt);
   updatePvpBot(dt);
   updatePet(dt);
@@ -6150,6 +6186,7 @@ function draw() {
     if (mob.x < cam.x - visPad || mob.x > cam.x + cam.w + visPad || mob.y < cam.y - visPad || mob.y > cam.y + cam.h + visPad) continue;
     drawMob(mob);
   }
+  drawGroundEffects(ctx);
   drawRemotePlayers();
   drawLavaPools();
   drawBossCharges();
@@ -6858,6 +6895,14 @@ function drawPlayer() {
   const breath = moved < 0.5 ? Math.sin(performance.now() / 700) * 1.2 : 0;
   ctx.save();
   if (invis) ctx.globalAlpha = 0.28;
+  // Spin-Animation (Wirbelschlag / Charm-Dance)
+  if ((player.spinAnim || 0) > 0) {
+    player.spinAnim = Math.max(0, player.spinAnim - 0.016);
+    ctx.translate(player.x, player.y);
+    const spinSpeed = player.spinAnim > 1 ? 6 : 12; // Tanz langsamer als Wirbel
+    ctx.rotate(performance.now() / 1000 * spinSpeed);
+    ctx.translate(-player.x, -player.y);
+  }
   const bearActive = player.bearForm > 0;
   const bodyColor = bearActive ? "#7c3a1d" : classDef.color;
   const headColor = bearActive ? "#92400e" : "#f3c7a1";
@@ -7556,6 +7601,7 @@ function restart() {
   weaponTrails.length = 0;
   crescentWaves.length = 0;
   projectiles.length = 0;
+  clearGroundEffects();
   waveTimer = 3.5;
   minibossTimer = 18;
   bossTimer = 48;
