@@ -2,7 +2,7 @@ import { DEFAULT_CLASS_ID, classDefs, getClassDef } from "./data/classes.js";
 import { abilityDefs, getAbilityDef } from "./data/abilities.js";
 import { MAX_STACK, item, itemDefs, typeBadges, rarityLabels, affixCatalog, rollAffixes } from "./data/items.js";
 import { getTalentTree, abilityMasteryLevel } from "./data/talents.js";
-import { worldDefs, getWorldDef, PORTAL_EDGE_THRESHOLD, getStoneStyle, getPortalColor } from "./data/worlds.js";
+import { worldDefs, getWorldDef, PORTAL_EDGE_THRESHOLD, getStoneStyle, getPortalColor, getWeather } from "./data/worlds.js";
 import { rollMobSkin } from "./data/mobs.js";
 import { bossForWorld, petForBossId, bosses } from "./data/bosses/index.js";
 import { rollDrops, dropTables, getDropTable } from "./data/drops.js";
@@ -165,7 +165,8 @@ const dyingMobs = []; // { x, y, color, scale, life, maxLife, rot }
 let comboCount = 0;
 let comboTimer = 0;
 let comboMaxDmg = 0;
-const insectSwarm = []; // { x, y, vx, vy, target, life }
+const insectSwarm = [];
+const weatherParticles = []; // { x, y, vx, vy, life, type, color, size }
 let traderMode = "buy";
 let trainerLastReset = 0;
 let courierState = null;
@@ -3794,6 +3795,92 @@ function bearForm() {
   }
 }
 
+function updateWeather(dt) {
+  const w = getWeather(currentWorldId);
+  if (!w) return;
+  const cam = camera();
+  // Spawn neue Partikel um sicherzustellen dass count erreicht ist
+  while (weatherParticles.length < w.count) {
+    spawnWeatherParticle(w, cam, true);
+  }
+  for (let i = weatherParticles.length - 1; i >= 0; i -= 1) {
+    const p = weatherParticles[i];
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.life -= dt;
+    // Off-screen oder tot → recyclen
+    if (p.life <= 0 || p.x < cam.x - 100 || p.x > cam.x + cam.w + 100 || p.y > cam.y + cam.h + 100 || p.y < cam.y - 100) {
+      weatherParticles.splice(i, 1);
+    }
+  }
+}
+
+function spawnWeatherParticle(w, cam, anyPos = false) {
+  const x = anyPos
+    ? cam.x + Math.random() * cam.w
+    : cam.x + Math.random() * cam.w;
+  const y = w.type === "rain" || w.type === "snow" || w.type === "pollen"
+    ? cam.y - 20
+    : w.type === "ash"
+      ? cam.y + cam.h + 20
+      : cam.y + Math.random() * cam.h;
+  const startY = anyPos ? cam.y + Math.random() * cam.h : y;
+  let vx = w.direction * 40 + (Math.random() - 0.5) * 20;
+  let vy = w.speed;
+  if (w.type === "firefly") {
+    vx = (Math.random() - 0.5) * 30;
+    vy = (Math.random() - 0.5) * 30;
+  }
+  weatherParticles.push({
+    x, y: startY,
+    vx, vy,
+    life: w.type === "firefly" ? 5 + Math.random() * 3 : 4,
+    type: w.type,
+    color: w.color,
+    size: w.type === "rain" ? 1.5 : w.type === "snow" ? 2.5 : w.type === "ash" ? 2 : w.type === "firefly" ? 3 : 1.8,
+  });
+}
+
+function drawWeather() {
+  const w = getWeather(currentWorldId);
+  if (!w) return;
+  for (const p of weatherParticles) {
+    ctx.save();
+    if (p.type === "rain") {
+      ctx.strokeStyle = p.color;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - p.vx * 0.04, p.y - p.vy * 0.04);
+      ctx.stroke();
+    } else if (p.type === "firefly") {
+      const flicker = 0.4 + Math.sin(performance.now() / 200 + p.x) * 0.5;
+      ctx.globalAlpha = flicker;
+      ctx.fillStyle = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur = 8;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    } else if (p.type === "wind") {
+      ctx.strokeStyle = p.color;
+      ctx.globalAlpha = 0.3;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x - 18, p.y);
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = 0.6;
+      ctx.fillStyle = p.color;
+      ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+    }
+    ctx.restore();
+  }
+  ctx.globalAlpha = 1;
+}
+
 function updateInsectSwarm(dt) {
   for (let i = insectSwarm.length - 1; i >= 0; i -= 1) {
     const ins = insectSwarm[i];
@@ -5213,6 +5300,7 @@ function update(dt) {
   }
   if (player.hitFlash > 0) player.hitFlash = Math.max(0, player.hitFlash - dt);
   updateInsectSwarm(dt);
+  updateWeather(dt);
   // Bär-Form Tick
   if (player.bearForm > 0) {
     player.bearForm -= dt;
@@ -5648,6 +5736,7 @@ function draw() {
   }
   ctx.translate(-cam.x, -cam.y);
   drawGround(cam);
+  drawWeather();
   drawArenaPlatform();
   drawPortals();
   if (currentWorldId === "meadows") {

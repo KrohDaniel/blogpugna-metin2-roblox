@@ -137,3 +137,17 @@ export const portalColors = {
 export function getPortalColor(worldId) {
   return portalColors[worldId] || "#a695ff";
 }
+
+export const weatherStyles = {
+  meadows: { type: "pollen", color: "#fff2a8", count: 30, speed: 22, direction: 0.6 },
+  frostwastes: { type: "snow", color: "#e0f2fe", count: 80, speed: 70, direction: 0.4 },
+  emberforge: { type: "ash", color: "#fb923c", count: 60, speed: -40, direction: -0.3 },
+  shadowfen: { type: "firefly", color: "#bbf7a0", count: 40, speed: 0, direction: 0 },
+  skyspire: { type: "wind", color: "#ddd6fe", count: 50, speed: 180, direction: 0 },
+  tideklippen: { type: "rain", color: "#67e8f9", count: 120, speed: 320, direction: 0.2 },
+  arena: null,
+};
+
+export function getWeather(worldId) {
+  return weatherStyles[worldId];
+}
