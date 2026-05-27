@@ -24,6 +24,17 @@ export const talentTrees = {
     { id: "m_poisonmark", name: "Meister: Giftmarke", desc: "+1s Gift-Dauer + 10% DoT pro Punkt", max: 5, effect: "abilityMastery", target: "poisonMark", icon: "☠" },
     { id: "m_shadowdouble", name: "Meister: Schatten-Doppel", desc: "+1s Unsichtbarkeit + 15% Detonations-Schaden pro Punkt", max: 5, effect: "abilityMastery", target: "shadowDouble", icon: "👤" },
   ],
+  druid: [
+    // Stat-Knoten
+    { id: "d_hp", name: "Naturpanzer", desc: "+15 max HP pro Punkt", max: 5, effect: "maxHpBonus", per: 15, icon: "❤" },
+    { id: "d_atk", name: "Wildwuchs", desc: "+2 Angriff pro Punkt", max: 5, effect: "attackBonusFlat", per: 2, icon: "🌿" },
+    { id: "d_speed", name: "Pfotenlauf", desc: "+5% Tempo pro Punkt", max: 5, effect: "speedBonus", per: 0.05, icon: "🐾" },
+    { id: "d_ls", name: "Lebenshauch", desc: "+3% Lifesteal pro Punkt", max: 5, effect: "lifestealBonus", per: 0.03, icon: "🩸" },
+    // Mastery
+    { id: "m_rootsnare", name: "Meister: Wurzeln", desc: "+0.4s Stun + 20px Reichweite pro Punkt", max: 5, effect: "abilityMastery", target: "rootSnare", icon: "🌿" },
+    { id: "m_swarmcall", name: "Meister: Insekten-Schwarm", desc: "+1 Insekt + 8% Schaden pro Punkt", max: 5, effect: "abilityMastery", target: "swarmCall", icon: "🐝" },
+    { id: "m_bearform", name: "Meister: Baer-Form", desc: "+1s Dauer + 5% HP-Boost pro Punkt", max: 5, effect: "abilityMastery", target: "bearForm", icon: "🐻" },
+  ],
   charmer: [
     // Stat-Knoten
     { id: "c_evade", name: "Anmut", desc: "+4% Ausweich-Chance pro Punkt", max: 5, effect: "evadeBonus", per: 0.04, icon: "✨" },
