@@ -3571,8 +3571,22 @@ function shieldBash() {
   for (const mob of [...mobs]) {
     if (!isInCone(mob, angle, 150, 56)) continue;
     applyStatus(mob, "stunned", stunDur);
-    mob.x += Math.cos(angle) * 36;
-    mob.y += Math.sin(angle) * 36;
+    // Knockback als Particle-Trail
+    const kbX = Math.cos(angle) * 36;
+    const kbY = Math.sin(angle) * 36;
+    for (let k = 0; k < 5; k += 1) {
+      particles.push({
+        x: mob.x - kbX * (k * 0.2),
+        y: mob.y - kbY * (k * 0.2),
+        vx: -kbX * 2,
+        vy: -kbY * 2,
+        life: 0.3,
+        color: "#f4c95d",
+        size: 4,
+      });
+    }
+    mob.x += kbX;
+    mob.y += kbY;
     damageMob(mob, Math.floor(attackPower() * dmgMult), { tag: "stun" });
     hit = true;
   }
@@ -3581,6 +3595,10 @@ function shieldBash() {
       hit = damageRemotePlayer(remote, attackPower() * (dmgMult + 0.05), "stun") || hit;
     }
   }
+  // Schockwelle (expandierender Ring)
+  anim.spawnRoar(impact.x, impact.y, "#f4c95d");
+  // Schild-Schein als kurzlebige Gold-Wolke
+  anim.spawnDustPuff(particles, impact.x, impact.y, "#f4c95d", 18);
   burst(impact.x, impact.y, "#f4c95d", hit ? 28 : 14);
 }
 
@@ -3605,6 +3623,22 @@ function whirlwind() {
     }
   }
   crescentWaves.push({ x: player.x, y: player.y - 12, angle: 0, range: radius, radius: radius, life: 0.34, maxLife: 0.34, color: "#f4c95d", radial: true });
+  // Player visuell drehen + Spin-Trail-Ringe + Klingen-Bogen
+  player.spinAnim = Math.max(player.spinAnim || 0, 0.6);
+  anim.spawnSpinAura(player.x, player.y, radius, "#f4c95d", 4, 0.08);
+  // Klingen-Funken am Rand
+  for (let i = 0; i < 14; i += 1) {
+    const a = (i / 14) * Math.PI * 2;
+    particles.push({
+      x: player.x + Math.cos(a) * radius * 0.8,
+      y: player.y + Math.sin(a) * radius * 0.8,
+      vx: Math.cos(a + Math.PI / 2) * 120,
+      vy: Math.sin(a + Math.PI / 2) * 120,
+      life: 0.4,
+      color: i % 2 === 0 ? "#f4c95d" : "#ff9f67",
+      size: 4,
+    });
+  }
   burst(player.x, player.y, hit ? "#f4c95d" : "#d9dee5", 28);
 }
 
@@ -3612,6 +3646,8 @@ function shadowStep() {
   const m = mastery("shadowStep");
   const range = 280 + m * 40;
   const angle = aimAngle();
+  const startX = player.x;
+  const startY = player.y;
   player.x = clamp(player.x + Math.cos(angle) * range, player.r, world.w - player.r);
   player.y = clamp(player.y + Math.sin(angle) * range, player.r, world.h - player.r);
   player.dashCritWindow = 2.0;
@@ -3619,7 +3655,31 @@ function shadowStep() {
   const heal = Math.round(player.maxHp * (0.30 + m * 0.05));
   player.hp = Math.min(player.maxHp, player.hp + heal);
   floatText(player.x, player.y - 50, `+${heal} HP`, "#51d37a");
-  for (let i = 0; i < 36; i += 1) {
+  // Rauch-Wolke am Start + Ziel
+  anim.spawnDustPuff(particles, startX, startY, "#26214f", 22);
+  anim.spawnDustPuff(particles, player.x, player.y, "#7a6cf2", 22);
+  // Geister-Trail: 6 Phantome zwischen Start und Ziel
+  const phantomCount = 6;
+  for (let i = 1; i <= phantomCount; i += 1) {
+    const t = i / (phantomCount + 1);
+    const px = startX + (player.x - startX) * t;
+    const py = startY + (player.y - startY) * t;
+    setTimeout(() => {
+      // Vertikale Tinten-Streifen die kurz aufblitzen
+      for (let j = -10; j <= 10; j += 5) {
+        particles.push({
+          x: px + j,
+          y: py - 20,
+          vx: 0, vy: -20,
+          life: 0.35 - i * 0.04,
+          color: "#7a6cf2",
+          size: 3,
+        });
+      }
+    }, i * 35);
+  }
+  // Heal-Funken am Ziel
+  for (let i = 0; i < 12; i += 1) {
     const a = Math.random() * Math.PI * 2;
     particles.push({
       x: player.x + Math.cos(a) * 32,
@@ -3627,8 +3687,8 @@ function shadowStep() {
       vx: Math.cos(a) * 110,
       vy: Math.sin(a) * 110,
       life: 0.6,
-      color: i % 3 === 0 ? "#51d37a" : "#6f63ff",
-      size: 5,
+      color: "#51d37a",
+      size: 4,
     });
   }
 }
@@ -3680,6 +3740,8 @@ function poisonMark() {
     applyStatus(mob, "poisoned", poisonDur);
     mob.poisonDotMult = dotMult; // tickStatuses liest das
     damageMob(mob, Math.floor(attackPower() * 0.75), { tag: "mark" });
+    // Persistente Gift-Wolke unter dem Mob — bleibt so lange wie Gift wirkt
+    anim.spawnPoisonCloud(mob.x, mob.y + 8, 38, poisonDur);
     marked += 1;
   }
   for (const remote of Object.values(remotePlayers)) {
@@ -3735,6 +3797,10 @@ function fireOrb() {
   if (pvpBotEntity && Math.hypot(pvpBotEntity.x - impact.x, pvpBotEntity.y - impact.y) < radius) {
     damagePvpBot(attackPower() * 1.5 * dmgMult);
   }
+  // Persistenter Lava-Pool 2s am Einschlag
+  anim.spawnLavaPool(impact.x, impact.y, radius * 0.55, 2);
+  // Schockwelle-Ringe
+  anim.spawnRoar(impact.x, impact.y, "#ff7a3d");
   burst(impact.x, impact.y, "#e86f36", 40);
 }
 
@@ -3764,6 +3830,27 @@ function earthquake() {
   }
   skillFlashes.push({ color: "#f4c95d", life: 0.35, maxLife: 0.35 });
   cameraShake = 0.6;
+  // Persistente Crater + 3 expandierende Ringe + Erd-Crack-Linien als Wurzel-Effekt
+  anim.spawnCrater(player.x, player.y, radius * 0.7, 8);
+  for (let i = 0; i < 3; i += 1) {
+    setTimeout(() => {
+      groundEffects.push({ kind: "expanding_ring", x: player.x, y: player.y, maxRadius: radius * (0.4 + i * 0.3), life: 0.7, maxLife: 0.7, color: "#f4c95d" });
+    }, i * 100);
+  }
+  // Steine fliegen aus dem Boden
+  for (let i = 0; i < 20; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    const d = 30 + Math.random() * radius * 0.6;
+    particles.push({
+      x: player.x + Math.cos(a) * d,
+      y: player.y + Math.sin(a) * d,
+      vx: (Math.random() - 0.5) * 80,
+      vy: -250 - Math.random() * 150,
+      life: 0.9,
+      color: "#78716c",
+      size: 5 + Math.random() * 4,
+    });
+  }
   for (const mob of [...mobs]) {
     if (dist(player, mob) > radius + mob.r) continue;
     damageMob(mob, Math.floor(attackPower() * 2.4 * dmgMult), { tag: "combo" });
@@ -3807,6 +3894,22 @@ function shadowDouble() {
   player.invuln = 0.5;
   // Visuelle Effekte
   skillFlashes.push({ color: "#7a6cf2", life: 0.35, maxLife: 0.35 });
+  // Tinten-Pool unter dem Decoy als persistente "Schatten-Lache"
+  groundEffects.push({ kind: "lava_pool", x: shadowDecoy.x, y: shadowDecoy.y, radius: 38, life: 6, maxLife: 6 });
+  // Vertikale Tinten-Streifen am Spieler (Auflöse-Effekt)
+  for (let j = -15; j <= 15; j += 4) {
+    for (let i = 0; i < 4; i += 1) {
+      particles.push({
+        x: player.x + j,
+        y: player.y - 40 + i * 12,
+        vx: 0, vy: -50 - Math.random() * 30,
+        life: 0.5,
+        color: "#1a1830",
+        size: 4,
+      });
+    }
+  }
+  // Schatten-Funken um den Doppelganger
   for (let i = 0; i < 36; i += 1) {
     const a = Math.random() * Math.PI * 2;
     particles.push({
@@ -3905,6 +4008,27 @@ function meteor() {
   const impact = pointAhead(320, angle);
   const radius = 260 * (1 + m * 0.10);
   const dmgMult = 1 + m * 0.15;
+  // Telegraph-Pulse: roter pulsierender Ring (0.6s vor Impact - sichtbar als Warnung)
+  groundEffects.push({ kind: "expanding_ring", x: impact.x, y: impact.y, maxRadius: radius * 1.05, life: 0.6, maxLife: 0.6, color: "#ff5d62" });
+  groundEffects.push({ kind: "expanding_ring", x: impact.x, y: impact.y, maxRadius: radius * 0.7, life: 0.6, maxLife: 0.6, color: "#ffe0a0" });
+  // Sturzflug-Trail: 12 Frames Feuer von oben rechts zum Impact
+  for (let i = 0; i < 12; i += 1) {
+    setTimeout(() => {
+      const sx = impact.x + 280 - i * 26;
+      const sy = impact.y - 380 + i * 32;
+      for (let j = 0; j < 6; j += 1) {
+        particles.push({
+          x: sx + (Math.random() - 0.5) * 20,
+          y: sy + (Math.random() - 0.5) * 20,
+          vx: -200 + Math.random() * 40,
+          vy: 300 + Math.random() * 80,
+          life: 0.5,
+          color: j % 2 === 0 ? "#ffe0a0" : "#ff5d62",
+          size: 5 + Math.random() * 4,
+        });
+      }
+    }, i * 35);
+  }
   // Falling meteor visual (instant for now)
   for (let i = 0; i < 4; i += 1) {
     crescentWaves.push({
@@ -3915,6 +4039,9 @@ function meteor() {
       life: 0.8 - i * 0.1, maxLife: 0.8 - i * 0.1,
     });
   }
+  // Persistenter Krater + Lava-Pool
+  anim.spawnCrater(impact.x, impact.y, radius * 0.7, 10);
+  anim.spawnLavaPool(impact.x, impact.y, radius * 0.55, 3);
   for (let i = 0; i < 120; i += 1) {
     const a = Math.random() * Math.PI * 2;
     const d = Math.random() * radius;
@@ -4310,6 +4437,21 @@ function frostCircle() {
     }
   }
   crescentWaves.push({ x: impact.x, y: impact.y, angle: 0, range: 142, radius: 142, life: 0.5, maxLife: 0.5, color: "#9ee7ff", radial: true });
+  // Persistenter Eis-Ring (Frost-Hexagon bleibt 6s sichtbar)
+  anim.spawnFrostRing(impact.x, impact.y, 142, slowDur + 1);
+  // Schneeflocken die hineinfallen
+  for (let i = 0; i < 16; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    particles.push({
+      x: impact.x + Math.cos(a) * 142,
+      y: impact.y - 80 + Math.sin(a) * 30,
+      vx: 0,
+      vy: 30 + Math.random() * 30,
+      life: 1.2,
+      color: "#e0f2fe",
+      size: 3,
+    });
+  }
   burst(impact.x, impact.y, "#9ee7ff", 30);
 }
 
@@ -6216,8 +6358,27 @@ function draw() {
 
 function drawGround(cam) {
   const wDef = currentWorld();
-  ctx.fillStyle = wDef.ground || "#2f4630";
+  // Radialer Gradient als Boden — heller in der Mitte, dunkler aussen (Atmosphaere)
+  const baseColor = wDef.ground || "#2f4630";
+  ctx.fillStyle = baseColor;
   ctx.fillRect(cam.x, cam.y, cam.w, cam.h);
+  // Subtiles Gras/Stein-Pattern: kleine Pixel-Wolken zufaellig verteilt (deterministisch)
+  ctx.fillStyle = wDef.groundDetail || "rgba(255, 255, 255, 0.04)";
+  const tile = 160;
+  const sx = Math.floor(cam.x / tile) * tile;
+  const sy = Math.floor(cam.y / tile) * tile;
+  for (let x = sx; x < cam.x + cam.w + tile; x += tile) {
+    for (let y = sy; y < cam.y + cam.h + tile; y += tile) {
+      // Pseudo-Zufall basierend auf Position fuer stabiles Muster
+      const seed = (x * 73856093) ^ (y * 19349663);
+      for (let i = 0; i < 4; i += 1) {
+        const px = x + ((seed >> (i * 4)) & 0x7F) + 8;
+        const py = y + ((seed >> (i * 4 + 8)) & 0x7F) + 8;
+        ctx.fillRect(px, py, 3, 3);
+      }
+    }
+  }
+  // Hellere Grid-Linien
   ctx.strokeStyle = wDef.groundAccent || "rgba(255,255,255,0.05)";
   ctx.lineWidth = 1;
   const grid = 80;
@@ -6235,13 +6396,60 @@ function drawGround(cam) {
     ctx.lineTo(cam.x + cam.w, y);
     ctx.stroke();
   }
-
+  // Welt-spezifische Boden-Dekoration (Buesche / Steine je nach Welt)
   ctx.fillStyle = "rgba(20, 28, 20, 0.55)";
   for (let i = 0; i < 30; i += 1) {
     const x = (i * 277) % world.w;
     const y = (i * 173) % world.h;
     ctx.fillRect(x, y, 28, 28);
     ctx.fillRect(x + 8, y - 18, 12, 18);
+  }
+  // Vignette: dunkler Ring am Bildschirmrand fuer Atmosphaere
+  const vignette = ctx.createRadialGradient(
+    cam.x + cam.w / 2, cam.y + cam.h / 2, cam.w * 0.35,
+    cam.x + cam.w / 2, cam.y + cam.h / 2, cam.w * 0.75
+  );
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.38)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(cam.x, cam.y, cam.w, cam.h);
+  // Ambient-Partikel: 2-3 sanfte Pollen/Glueh-Punkte im sichtbaren Bereich
+  drawAmbientParticles(cam, wDef);
+}
+
+let ambientParticles = [];
+function drawAmbientParticles(cam, wDef) {
+  // Initialisiere bis zu 12 ambient-Partikel die in der Welt rumtreiben
+  while (ambientParticles.length < 14) {
+    ambientParticles.push({
+      x: cam.x + Math.random() * cam.w,
+      y: cam.y + Math.random() * cam.h,
+      vx: (Math.random() - 0.5) * 18,
+      vy: -8 - Math.random() * 12,
+      phase: Math.random() * Math.PI * 2,
+      size: 2 + Math.random() * 2,
+    });
+  }
+  // Welt-spezifische Farbe (Pollen-Gold in Wiesen, Schnee-Weiss in Frost, Glueh-Orange in Glut)
+  const color = wDef.ambientColor || (currentWorldId === "frostwastes" ? "#e0f2fe" : currentWorldId === "emberforge" ? "#fb923c" : currentWorldId === "shadowfen" ? "#84a665" : currentWorldId === "skyspire" ? "#ddd6fe" : currentWorldId === "tideklippen" ? "#22d3ee" : "#fde047");
+  const dt = 0.016;
+  for (let i = ambientParticles.length - 1; i >= 0; i -= 1) {
+    const p = ambientParticles[i];
+    p.x += p.vx * dt + Math.sin(p.phase + performance.now() / 1200) * 0.3;
+    p.y += p.vy * dt;
+    p.phase += dt * 1.4;
+    // Out of view? respawn
+    if (p.y < cam.y - 20 || p.x < cam.x - 20 || p.x > cam.x + cam.w + 20) {
+      ambientParticles.splice(i, 1);
+      continue;
+    }
+    ctx.save();
+    ctx.globalAlpha = 0.55 + Math.sin(p.phase) * 0.25;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+    ctx.restore();
   }
 }
 
@@ -7156,18 +7364,47 @@ function drawWeaponTrails() {
 
 function drawMob(mob) {
   const isBoss = mob.rank === "boss" || mob.rank === "miniboss";
+  // Schatten unter jedem Mob
+  const sScale = mob.scale || (mob.elite ? 1.05 : 0.9);
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+  ctx.beginPath();
+  ctx.ellipse(mob.x, mob.y + (mob.r || 28) * 0.95, (mob.r || 28) * 0.95, 7 + sScale * 2, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  // Elite/Boss-Glow um Mob
+  if (mob.elite || isBoss) {
+    const pulse = 0.5 + Math.sin(performance.now() / 320 + mob.x * 0.01) * 0.3;
+    const glowColor = isBoss ? (mob.rank === "boss" ? "rgba(240, 171, 252, 0.32)" : "rgba(253, 186, 116, 0.30)") : "rgba(192, 132, 252, 0.26)";
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(mob.x, mob.y, (mob.r || 28) + 12 + pulse * 6, 0, Math.PI * 2);
+    ctx.fillStyle = glowColor;
+    ctx.fill();
+    ctx.restore();
+  }
   // Boss mit eigener Definition?
   if (mob.bossDef) {
     drawBossMob(mob);
   } else if (mob.skin) {
     drawSkinnedMob(mob);
   } else {
+    const animState = updateMobAnimState(mob);
     drawBlockPerson(mob.x, mob.y, {
       head: mob.rank === "boss" ? "#f0abfc" : mob.rank === "miniboss" ? "#fdba74" : mob.elite ? "#c084fc" : "#b34d54",
       body: mob.rank === "boss" ? "#701a75" : mob.rank === "miniboss" ? "#7c2d12" : mob.elite ? "#65358f" : "#5b2229",
       arms: mob.rank === "boss" ? "#c026d3" : mob.rank === "miniboss" ? "#ea580c" : mob.elite ? "#8b5cc0" : "#7f2f37",
       legs: "#242936",
-    }, mob.scale || (mob.elite ? 1.05 : 0.9), 0, mob.hitTimer > 0);
+    }, sScale, 0, mob.hitTimer > 0, null, null, animState.walkPhase, animState.breath);
+    // Augen-Glow (rote leuchtende Punkte)
+    ctx.save();
+    const eyeColor = isBoss ? "#fff" : mob.elite ? "#fbbf24" : "#fca5a5";
+    ctx.fillStyle = eyeColor;
+    ctx.shadowColor = isBoss ? "#fbbf24" : "#ef4444";
+    ctx.shadowBlur = 6;
+    ctx.fillRect(mob.x - 7 * sScale, mob.y - 35 * sScale + animState.breath, 3 * sScale, 3 * sScale);
+    ctx.fillRect(mob.x + 4 * sScale, mob.y - 35 * sScale + animState.breath, 3 * sScale, 3 * sScale);
+    ctx.restore();
   }
   const barWidth = mob.rank === "boss" ? 130 : mob.rank === "miniboss" ? 86 : 48;
   const y = mob.y - 70 - mob.r * 0.55;
