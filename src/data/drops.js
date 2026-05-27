@@ -125,6 +125,34 @@ export const dropTables = {
       { id: "metin_shard", chance: 1 },
     ], goldRange: [50, 90] },
   },
+  tideklippen: {
+    mob: { rolls: [
+      { id: "tide_pearl", chance: 0.06 },
+      { id: "health_potion", chance: 0.20 },
+      { id: "metin_shard", chance: 0.22 },
+    ], goldRange: [10, 22] },
+    elite: { rolls: [
+      { id: "tide_pearl", chance: 0.26 },
+      { id: "storm_saber", chance: 0.16 },
+      { id: "iron_armor", chance: 0.20 },
+    ], goldRange: [22, 42] },
+    miniboss: { rolls: [
+      { id: "tide_pearl", chance: 0.6 },
+      { id: "pugna_cleaver", chance: 0.25 },
+      { id: "steel_armor", chance: 0.32 },
+    ], goldRange: [85, 140] },
+    boss: { rolls: [
+      { id: "tide_pearl", chance: 1 },
+      { id: "fullmoon_sickle", chance: 0.35 },
+      { id: "dragon_plate", chance: 0.35 },
+      { id: "pugna_cleaver", chance: 0.25 },
+    ], goldRange: [300, 500] },
+    metin: { rolls: [
+      { id: "tide_pearl", chance: 0.55 },
+      { id: "storm_saber", chance: 0.10 },
+      { id: "metin_shard", chance: 1 },
+    ], goldRange: [70, 120] },
+  },
   skyspire: {
     mob: { rolls: [
       { id: "sky_shard", chance: 0.06 },

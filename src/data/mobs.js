@@ -38,6 +38,15 @@ export const mobPools = {
       { name: "Hexen-Druide", head: "#a3b18a", body: "#1d3018", arms: "#3a5a2d", legs: "#0e1c08", accent: "hood", accentColor: "#2d4a1f", shape: "humanoid" },
     ],
   },
+  tideklippen: {
+    mob: [
+      { name: "Tide-Greifer", head: "#a5f3fc", body: "#0e7490", arms: "#0891b2", legs: "#083344", accent: null, shape: "imp" },
+      { name: "Riff-Wächter", head: "#cffafe", body: "#155e75", arms: "#0e7490", legs: "#0c4a6e", accent: null, shape: "humanoid" },
+    ],
+    elite: [
+      { name: "Sturm-Marder", head: "#67e8f9", body: "#155e75", arms: "#0891b2", legs: "#082f49", accent: "horned-helm", accentColor: "#22d3ee", shape: "humanoid" },
+    ],
+  },
   skyspire: {
     mob: [
       { name: "Sky-Schwaermer", head: "#c4b5fd", body: "#5b21b6", arms: "#7c3aed", legs: "#1e1b4b", accent: null, shape: "flyer" },

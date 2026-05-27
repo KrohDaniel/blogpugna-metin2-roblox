@@ -2,12 +2,14 @@ import { frostJarl } from "./frost_jarl.js";
 import { pyromantAsaru } from "./pyromant_asaru.js";
 import { motherSphagne } from "./mother_sphagne.js";
 import { aetherius } from "./aetherius.js";
+import { leviathan } from "./leviathan.js";
 
 export const bosses = {
   [frostJarl.id]: frostJarl,
   [pyromantAsaru.id]: pyromantAsaru,
   [motherSphagne.id]: motherSphagne,
   [aetherius.id]: aetherius,
+  [leviathan.id]: leviathan,
 };
 
 export function bossForWorld(worldId) {

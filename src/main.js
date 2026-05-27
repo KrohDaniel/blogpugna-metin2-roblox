@@ -781,12 +781,13 @@ function updateWorldBoss(mob, dt) {
 }
 
 function checkAbilityRange(ab, d) {
-  // Projektil-Abilities haben range über Geschwindigkeit/Charge; viele AoEs haben radius
-  if (ab.id === "fireBolt" || ab.id === "frostSpear" || ab.id === "lightningChain") return d < 560;
+  if (ab.id === "fireBolt" || ab.id === "frostSpear" || ab.id === "lightningChain" || ab.id === "waveStrike") return d < 560;
   if (ab.id === "windBurst") return d < (ab.radius || 260) + 40;
   if (ab.id === "thunderclap") return d < (ab.radius || 180) + 60;
   if (ab.id === "lavaPool" || ab.id === "poisonCloud" || ab.id === "fireColumn" || ab.id === "sporeBurst") return d < 380;
   if (ab.id === "frostNova") return d < (ab.radius || 280) + 80;
+  if (ab.id === "submerge") return d < 600;
+  if (ab.id === "whirlpool") return d < 300;
   if (ab.id === "summonShards") return true;
   return d < 480;
 }
@@ -804,7 +805,84 @@ function executeBossAbility(mob, def, key, ab, chargeInfo) {
     case "lightningChain": castLightningChain(mob, def, ab); return;
     case "windBurst": castWindBurst(mob, def, ab); return;
     case "thunderclap": castThunderclap(mob, def, ab); return;
+    case "waveStrike": castWaveStrike(mob, def, ab); return;
+    case "submerge": castSubmerge(mob, def, ab, chargeInfo); return;
+    case "whirlpool": castWhirlpool(mob, def, ab); return;
   }
+}
+
+function castWaveStrike(mob, def, ab) {
+  const baseAngle = Math.atan2(player.y - mob.y, player.x - mob.x);
+  for (let i = -2; i <= 2; i += 1) {
+    const a = baseAngle + i * 0.14;
+    projectiles.push({
+      x: mob.x + Math.cos(a) * (mob.r + 12),
+      y: mob.y + Math.sin(a) * (mob.r + 12),
+      vx: Math.cos(a) * ab.speed,
+      vy: Math.sin(a) * ab.speed,
+      range: 540,
+      travelled: 0,
+      color: ab.color,
+      glow: ab.glow,
+      damage: Math.round(mob.damage * ab.damage),
+      owner: "bot",
+      pierce: ab.pierce || 2,
+      hits: new Set(),
+      life: 1.8,
+    });
+  }
+}
+
+function castSubmerge(mob, def, ab, chargeInfo) {
+  // Während Charge unsichtbar machen
+  mob.submerged = true;
+  // Charge-Position = Spieler-Position zum Zeitpunkt des Casts
+  if (chargeInfo) {
+    // Bei Aufschlag: AoE Damage
+    crescentWaves.push({
+      x: chargeInfo.x, y: chargeInfo.y, angle: 0,
+      range: ab.radius * 1.1, radius: ab.radius * 1.1,
+      color: ab.color, life: 0.6, maxLife: 0.6,
+    });
+    for (let i = 0; i < 80; i += 1) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({
+        x: chargeInfo.x + (Math.random() - 0.5) * ab.radius * 0.4,
+        y: chargeInfo.y + (Math.random() - 0.5) * 30,
+        vx: Math.cos(a) * (220 + Math.random() * 260),
+        vy: Math.sin(a) * (180 + Math.random() * 260),
+        life: 0.6,
+        color: i % 2 === 0 ? ab.color : "#a5f3fc",
+        size: 4,
+      });
+    }
+    cameraShake = 0.6;
+    if (Math.hypot(player.x - chargeInfo.x, player.y - chargeInfo.y) < ab.radius && player.invuln <= 0) {
+      const dmg = Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+      player.hp -= dmg;
+      player.invuln = 0.8;
+      floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
+    }
+    // Boss taucht am chargeInfo-Punkt auf
+    mob.x = chargeInfo.x;
+    mob.y = chargeInfo.y;
+    mob.submerged = false;
+  }
+}
+
+function castWhirlpool(mob, def, ab) {
+  // Wirbel-Zone — Spieler wird gezogen
+  lavaPools.push({
+    x: mob.x, y: mob.y,
+    radius: ab.radius,
+    damage: mob.damage * ab.damage,
+    life: ab.duration,
+    color: ab.color,
+    isWhirlpool: true,
+    pull: ab.pull,
+    centerX: mob.x,
+    centerY: mob.y,
+  });
 }
 
 // === PYROMANT ABILITIES ===
@@ -3078,6 +3156,16 @@ function updateLavaPools(dt) {
         floatText(player.x, player.y - 28, `-${dmg}`, p.color);
         if (p.isPoison) applyStatus(player, "poisoned", 2);
         if (p.slow) player.frostSlowTimer = Math.max(player.frostSlowTimer || 0, 1.2);
+      }
+    }
+    // Whirlpool pull
+    if (p.isWhirlpool) {
+      const dx = p.centerX - player.x;
+      const dy = p.centerY - player.y;
+      const d = Math.hypot(dx, dy) || 1;
+      if (d < p.radius) {
+        player.x += (dx / d) * p.pull * dt;
+        player.y += (dy / d) * p.pull * dt;
       }
     }
   }

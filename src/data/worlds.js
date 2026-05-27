@@ -56,10 +56,23 @@ export const worldDefs = {
     ground: "#1a2418",
     groundAccent: "rgba(80,150,80,0.08)",
     fog: "rgba(40,60,30,0.42)",
-    portals: { north: { to: "meadows", label: "Pugna-Wiesen" } },
+    portals: { north: { to: "meadows", label: "Pugna-Wiesen" }, east: { to: "tideklippen", label: "Tide-Klippen" } },
     mobPalette: { mob: "#65a82c", elite: "#83b95c", boss: "#a9d18e" },
     mobModifiers: { speedMult: 0.95, damageMult: 1.2, hpMult: 1.35, status: "poison-aura" },
     flavor: "Sichtreichweite reduziert. Mehr Gift-Eliten. Bessere Affix-Chancen.",
+  },
+  tideklippen: {
+    id: "tideklippen",
+    name: "Tide-Klippen",
+    subtitle: "Sturm-gepeitschte Küste, Welt-Boss: Leviathan",
+    levelRange: [18, 30],
+    ground: "#0d2434",
+    groundAccent: "rgba(70, 180, 220, 0.10)",
+    fog: "rgba(40, 90, 130, 0.32)",
+    portals: { west: { to: "shadowfen", label: "Schattensumpf" } },
+    mobPalette: { mob: "#22d3ee", elite: "#67e8f9", boss: "#0ea5e9" },
+    mobModifiers: { speedMult: 1.10, damageMult: 1.30, hpMult: 1.20, status: "wet-aura" },
+    flavor: "Regen + Blitze. Tide-Mobs treffen hart, wenn man auf nassen Steinen steht.",
   },
   skyspire: {
     id: "skyspire",
@@ -104,6 +117,7 @@ export const stoneStyles = {
   emberforge: { name: "Glut-Brocken", core: "#fb923c", shine: "#fed7aa", facets: "#7c2d12", shape: "molten" },
   shadowfen: { name: "Moos-Idol", core: "#84a665", shine: "#bbf7a0", facets: "#1d3018", shape: "totem" },
   skyspire: { name: "Sturm-Splitter", core: "#c4b5fd", shine: "#ddd6fe", facets: "#3b0764", shape: "spire" },
+  tideklippen: { name: "Tide-Säule", core: "#22d3ee", shine: "#a5f3fc", facets: "#0e7490", shape: "spire" },
 };
 
 export function getStoneStyle(worldId) {
@@ -116,6 +130,7 @@ export const portalColors = {
   emberforge: "#fb923c",
   shadowfen: "#84a665",
   skyspire: "#c4b5fd",
+  tideklippen: "#22d3ee",
   arena: "#7a6cf2",
 };
 

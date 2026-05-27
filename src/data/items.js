@@ -26,6 +26,7 @@ export const itemDefs = {
   ember_spark: { name: "Glut-Funke", icon: "🔥", type: "material", rarity: "epic", color: "#fb923c", breakReduce: 0.18, source: "emberforge" },
   shadow_essence: { name: "Schatten-Essenz", icon: "☘", type: "material", rarity: "epic", color: "#84a665", breakReduce: 0.16, source: "shadowfen" },
   sky_shard: { name: "Sturm-Splitter", icon: "⚡", type: "material", rarity: "epic", color: "#ddd6fe", breakReduce: 0.22, source: "skyspire" },
+  tide_pearl: { name: "Tide-Perle", icon: "💧", type: "material", rarity: "epic", color: "#22d3ee", breakReduce: 0.25, source: "tideklippen" },
 };
 
 export const typeBadges = {
