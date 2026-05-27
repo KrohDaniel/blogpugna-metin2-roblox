@@ -1567,7 +1567,11 @@ function bindTouchSkill(id, handler) {
 bindTouchSkill("touchAttack", () => swing({}));
 bindTouchSkill("touchSkillQ", () => useAbility(primaryAbilityId()));
 bindTouchSkill("touchSkillE", () => useAbility(secondaryAbilityId()));
-bindTouchSkill("touchSkillR", () => useAbility(ultimateAbilityId()));
+bindTouchSkill("touchSkillR", () => {
+  // Bei Tod als Restart nutzen — sonst Ulti
+  if (player.hp <= 0) { restart(); return; }
+  useAbility(ultimateAbilityId());
+});
 bindTouchSkill("touchPotion", () => usePotion());
 
 // Fullscreen-Toggle
@@ -1609,6 +1613,14 @@ touchMenuPanel?.querySelectorAll("button[data-overlay]").forEach((btn) => {
     document.getElementById("overlayBackdrop")?.classList.remove("hidden");
   });
 });
+// Death-Restart-Button (Mobile + Desktop)
+const deathRestartBtn = document.getElementById("deathRestart");
+if (deathRestartBtn) {
+  const fire = (e) => { e.preventDefault(); if (player.hp <= 0) restart(); };
+  deathRestartBtn.addEventListener("click", fire);
+  deathRestartBtn.addEventListener("touchstart", fire, { passive: false });
+}
+
 document.getElementById("touchSwitchChar")?.addEventListener("click", () => {
   touchMenuPanel?.classList.add("hidden");
   document.getElementById("switchCharBtn")?.click();
@@ -3232,10 +3244,8 @@ function swing() {
   const weapon = currentWeapon();
   const classDef = getClassDef(player.classId);
   player.attackCooldown = weapon.cooldown || 0.42;
-  const cam = camera();
-  mouse.worldX = mouse.x + cam.x;
-  mouse.worldY = mouse.y + cam.y;
-  const angle = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+  // Aim ueber aimAngle() — beruecksichtigt Joystick / Auto-Aim / Manual-Tap
+  const angle = aimAngle();
 
   // Ranged path (Magier / staff) — aber Bär-Form ist immer Melee
   const isRanged = (weapon.style === "staff" || classDef.weaponStyle === "staff") && !(player.bearForm > 0);
@@ -6545,6 +6555,12 @@ function updateUi() {
   updateTouchCooldown("touchSkillQ", primaryAbilityId());
   updateTouchCooldown("touchSkillE", secondaryAbilityId());
   updateTouchCooldown("touchSkillR", ultimateAbilityId());
+  // Death-Overlay anzeigen wenn tot
+  const deathOv = document.getElementById("deathOverlay");
+  if (deathOv) {
+    if (player.hp <= 0 && !isPvpActive()) deathOv.classList.remove("hidden");
+    else deathOv.classList.add("hidden");
+  }
   const armor = equippedArmorItem();
   const totalDef = totalDefense();
   ui.armorText.textContent = armor ? `${itemDefs[armor.id].name.split(" ")[0]} +${armor.upgrade || 0} (${totalDef})` : `+${player.armorLevel} (${totalDef})`;
@@ -7703,7 +7719,7 @@ function drawPlayer() {
   const cam = camera();
   mouse.worldX = mouse.x + cam.x;
   mouse.worldY = mouse.y + cam.y;
-  const facing = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+  const facing = isTouchDevice ? aimAngle() : Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
   const invis = (player.invisTimer || 0) > 0;
   // Bewegungs-Phase berechnen
   if (player.lastX === undefined) { player.lastX = player.x; player.lastY = player.y; player.walkPhase = 0; }

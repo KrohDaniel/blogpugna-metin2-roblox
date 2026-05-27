@@ -3059,6 +3059,54 @@ body.is-touch .mobile-hud { display: block; }
   }
 }
 
+/* Death Overlay (Mobile + Desktop) */
+.death-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 14, 18, 0.78);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  pointer-events: auto;
+}
+.death-overlay.hidden { display: none; }
+.death-card {
+  background: linear-gradient(160deg, #1a1f2e, #0a0e16);
+  border: 2px solid rgba(239, 68, 68, 0.6);
+  border-radius: 14px;
+  padding: 24px 28px;
+  text-align: center;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7), 0 0 60px rgba(239, 68, 68, 0.25);
+  max-width: 320px;
+}
+.death-card h2 {
+  margin: 0 0 8px;
+  font-size: 32px;
+  color: #ef4444;
+  font-weight: 800;
+  letter-spacing: 1px;
+}
+.death-card p {
+  margin: 0 0 18px;
+  color: #cbd5e1;
+  font-size: 14px;
+}
+.death-card button {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+  border: none;
+  color: #fff;
+  font-weight: 800;
+  font-size: 18px;
+  padding: 12px 28px;
+  border-radius: 30px;
+  cursor: pointer;
+  width: 100%;
+  box-shadow: 0 4px 14px rgba(239, 68, 68, 0.5);
+  transition: transform 0.08s ease;
+}
+.death-card button:active { transform: scale(0.96); }
+
 /* Fullscreen-Modus: HUD ganz weg */
 body.fullscreen-active .top-hud { display: none !important; }
 body.fullscreen-active .game-area { height: 100vh !important; }

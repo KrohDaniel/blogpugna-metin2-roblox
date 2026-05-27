@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=mobile-cd" />
+    <link rel="stylesheet" href="styles.css?v=mobile-death-aim" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -151,6 +151,15 @@
           </div>
           <button id="touchFullscreen" type="button" class="touch-fullscreen" aria-label="Vollbild">⛶</button>
           <button id="touchMenu" type="button" class="touch-menu-btn" aria-label="Menue">☰</button>
+        </div>
+
+        <!-- Death Overlay (sichtbar bei HP<=0) -->
+        <div id="deathOverlay" class="death-overlay hidden" aria-hidden="true">
+          <div class="death-card">
+            <h2>Besiegt</h2>
+            <p>Du verlierst 1 Level, Inventar bleibt.</p>
+            <button id="deathRestart" type="button">▶ Neustart</button>
+          </div>
         </div>
 
         <!-- Mobile-Menue (klappt aus, ersetzt hud-toggles auf Mobile) -->
@@ -466,7 +475,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=mobile-cd"></script>
-    <script type="module" src="src/main.js?v=mobile-cd"></script>
+    <script type="module" src="firebase-config.js?v=mobile-death-aim"></script>
+    <script type="module" src="src/main.js?v=mobile-death-aim"></script>
   </body>
 </html>
