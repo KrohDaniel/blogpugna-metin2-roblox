@@ -2794,6 +2794,9 @@ function breakInvisOnAttack() {
 function swing() {
   if (player.attackCooldown > 0 || player.hp <= 0) return;
   breakInvisOnAttack();
+  // Swing-Animation auslösen
+  const weaponNow = currentWeapon();
+  player.swingAnim = { t: weaponNow.cooldown || 0.42, max: weaponNow.cooldown || 0.42 };
   const weapon = currentWeapon();
   const classDef = getClassDef(player.classId);
   player.attackCooldown = weapon.cooldown || 0.42;
@@ -3133,6 +3136,25 @@ function drawComboHud() {
 function comboDamageMult() {
   const tier = Math.min(5, Math.floor(comboCount / 3));
   return 1 + tier * 0.05;
+}
+
+function drawMobAttackTelegraphs() {
+  for (const mob of mobs) {
+    if (!mob.attackTelegraph || mob.attackTelegraph <= 0) continue;
+    if (mob.bossDef) continue; // Bosse haben eigene Telegraphs
+    const pct = mob.attackTelegraph / 0.18;
+    ctx.save();
+    ctx.globalAlpha = 0.4 + pct * 0.4;
+    ctx.strokeStyle = "#ef4444";
+    ctx.lineWidth = 2 + pct * 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(mob.x, mob.y);
+    ctx.lineTo(player.x, player.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
 }
 
 function drawDyingMobs() {
@@ -4921,11 +4943,18 @@ function update(dt) {
     const pdx = player.x - mob.x;
     const pdy = player.y - mob.y;
     const pd = Math.hypot(pdx, pdy) || 1;
+    // Telegraph zeigen wenn Mob in Schlag-Reichweite kommt
+    if (pd < player.r + mob.r + 30) {
+      mob.attackTelegraph = Math.max(mob.attackTelegraph || 0, 0.18);
+    }
+    if (mob.attackTelegraph > 0) mob.attackTelegraph = Math.max(0, mob.attackTelegraph - dt);
     if (pd < player.r + mob.r && player.invuln <= 0) {
       const def = totalDefense();
       const mitigatedDamage = Math.max(3, Math.ceil(mob.damage * 0.65 + mob.damage * 0.35 - def));
       player.hp -= mitigatedDamage;
       player.invuln = 0.5;
+      // Player flash bei Treffer
+      player.hitFlash = 0.2;
       floatText(player.x, player.y - 36, `-${mitigatedDamage}`, "#ff5d62");
       if (player.hp <= 0) { showToast("Du wurdest besiegt. Druecke R fuer Neustart."); sfx.death(); }
     }
@@ -4977,6 +5006,10 @@ function update(dt) {
     dyingMobs[i].rot += dt * 6;
     if (dyingMobs[i].life <= 0) dyingMobs.splice(i, 1);
   }
+  if (player.swingAnim && player.swingAnim.t > 0) {
+    player.swingAnim.t = Math.max(0, player.swingAnim.t - dt);
+  }
+  if (player.hitFlash > 0) player.hitFlash = Math.max(0, player.hitFlash - dt);
   // Combo-Decay
   if (comboTimer > 0) {
     comboTimer -= dt;
@@ -5417,6 +5450,7 @@ function draw() {
   drawRemotePlayers();
   drawLavaPools();
   drawBossCharges();
+  drawMobAttackTelegraphs();
   drawDyingMobs();
   drawCrescentWaves();
   drawWeaponTrails();
@@ -6169,9 +6203,31 @@ function drawEquippedWeapon(facing, classDef = getClassDef(player.classId)) {
   const weapon = currentWeapon();
   const style = weapon.style || classDef.weaponStyle || "sword";
   const bob = Math.sin(performance.now() / 120) * 2;
+  // Swing-Animation: 80ms Wind-Up zurück, dann schneller Hieb nach vorne, dann zurück in Idle
+  let swingRot = 0;
+  let swingOffset = 0;
+  if (player.swingAnim && player.swingAnim.t > 0) {
+    const pct = 1 - player.swingAnim.t / player.swingAnim.max;
+    if (pct < 0.25) {
+      // Wind-Up: leicht nach hinten
+      swingRot = -0.7 * (pct / 0.25);
+      swingOffset = -6 * (pct / 0.25);
+    } else if (pct < 0.45) {
+      // Hieb: schnell nach vorne
+      const p = (pct - 0.25) / 0.20;
+      swingRot = -0.7 + 1.6 * p;
+      swingOffset = -6 + 18 * p;
+    } else {
+      // Recovery: zurück in Idle
+      const p = (pct - 0.45) / 0.55;
+      swingRot = 0.9 * (1 - p);
+      swingOffset = 12 * (1 - p);
+    }
+  }
   ctx.save();
   ctx.translate(player.x, player.y - 12 + bob);
-  ctx.rotate(facing);
+  ctx.rotate(facing + swingRot);
+  ctx.translate(swingOffset, 0);
 
   if (style === "staff") {
     // Glow at tip
