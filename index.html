@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=shared-world-1" />
+    <link rel="stylesheet" href="styles.css?v=gear-stack-2" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -76,6 +76,25 @@
           <p id="questText">Besiege 20 Gegner und zerstoere 1 Metin-Stein. Bosse erscheinen zwischendurch.</p>
         </div>
 
+        <div class="panel gear-panel">
+          <div class="panel-title">
+            <h2>Ausruestung</h2>
+            <span id="gearStats">Angriff 0 / Verteidigung 0</span>
+          </div>
+          <div class="gear-grid">
+            <div id="gearWeapon" class="gear-slot empty" data-slot="weapon" title="Keine Waffe ausgeruestet">
+              <span class="gear-label">Waffe</span>
+              <span class="gear-icon">—</span>
+              <span class="gear-name">leer</span>
+            </div>
+            <div id="gearArmor" class="gear-slot empty" data-slot="armor" title="Keine Ruestung ausgeruestet">
+              <span class="gear-label">Ruestung</span>
+              <span class="gear-icon">—</span>
+              <span class="gear-name">leer</span>
+            </div>
+          </div>
+        </div>
+
         <div class="panel inventory-panel">
           <div class="panel-title">
             <h2>Inventar</h2>
@@ -128,7 +147,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=shared-world-1"></script>
-    <script src="game.js?v=shared-world-1"></script>
+    <script type="module" src="firebase-config.js?v=gear-stack-2"></script>
+    <script src="game.js?v=gear-stack-2"></script>
   </body>
 </html>

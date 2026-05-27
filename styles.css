@@ -260,6 +260,62 @@ h2 {
   background: #303c49;
 }
 
+.gear-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.gear-slot {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  gap: 4px;
+  padding: 10px 8px;
+  border: 1px solid #475569;
+  background: #111820;
+  cursor: help;
+}
+
+.gear-slot.empty { opacity: 0.55; }
+.gear-slot.rare { border-color: #7dd3fc; box-shadow: inset 0 0 0 2px rgba(85,215,255,0.14); }
+.gear-slot.epic { border-color: #c084fc; box-shadow: inset 0 0 0 2px rgba(192,132,252,0.18); }
+.gear-slot.legendary {
+  border-color: #f4c95d;
+  box-shadow: inset 0 0 0 2px rgba(244,201,93,0.22), 0 0 20px rgba(244,201,93,0.12);
+}
+
+.gear-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.gear-icon {
+  font-size: 34px;
+  line-height: 1;
+}
+
+.gear-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.gear-name .upgrade-tag {
+  color: var(--green);
+  margin-left: 4px;
+}
+
 .inventory {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -275,6 +331,29 @@ h2 {
   border: 1px solid #475569;
   background: #111820;
   cursor: pointer;
+}
+
+.slot[data-tooltip]:hover::after,
+.gear-slot[data-tooltip]:hover::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: pre-line;
+  min-width: 160px;
+  max-width: 240px;
+  background: #0e1217;
+  border: 1px solid #475569;
+  padding: 8px 10px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+  pointer-events: none;
+  z-index: 30;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.55);
 }
 
 .slot.empty {

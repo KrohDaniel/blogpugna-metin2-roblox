@@ -10,6 +10,9 @@ const ui = {
   goldText: document.querySelector("#goldText"),
   attackText: document.querySelector("#attackText"),
   armorText: document.querySelector("#armorText"),
+  gearWeapon: document.querySelector("#gearWeapon"),
+  gearArmor: document.querySelector("#gearArmor"),
+  gearStats: document.querySelector("#gearStats"),
   inventory: document.querySelector("#inventory"),
   sortInventory: document.querySelector("#sortInventory"),
   questProgress: document.querySelector("#questProgress"),
@@ -100,21 +103,23 @@ const defaultPlayerState = {
 };
 
 const itemDefs = {
-  health_potion: { name: "Roter Trank", icon: "+", type: "potion", rarity: "common", heal: 32 },
-  rust_sword: { name: "Rostklinge", icon: "/", type: "weapon", rarity: "common", attack: 3, color: "#d9dee5", glow: "rgba(217,222,229,0.18)", reach: 82, cooldown: 0.42 },
-  iron_blade: { name: "Eisenklinge", icon: "I", type: "weapon", rarity: "rare", attack: 8, color: "#9ee7ff", glow: "rgba(85,215,255,0.28)", reach: 92, cooldown: 0.38 },
-  metin_glaive: { name: "Metin-Gleve", icon: "G", type: "weapon", rarity: "rare", attack: 14, color: "#55d7ff", glow: "rgba(85,215,255,0.36)", reach: 108, cooldown: 0.36 },
-  pugna_cleaver: { name: "Pugna-Spalter", icon: "P", type: "weapon", rarity: "epic", attack: 21, color: "#c084fc", glow: "rgba(192,132,252,0.42)", reach: 118, cooldown: 0.46 },
-  storm_saber: { name: "Sturmsaebel", icon: "S", type: "weapon", rarity: "epic", attack: 17, color: "#f4c95d", glow: "rgba(244,201,93,0.42)", reach: 102, cooldown: 0.28 },
-  fullmoon_sickle: { name: "Vollmondsichel", icon: "C", type: "weapon", rarity: "legendary", attack: 29, color: "#fff2a8", glow: "rgba(244,201,93,0.48)", reach: 132, cooldown: 0.33 },
-  leather_armor: { name: "Lederweste", icon: "L", type: "armor", rarity: "common", defense: 4, color: "#a98056" },
-  iron_armor: { name: "Eisenharnisch", icon: "A", type: "armor", rarity: "rare", defense: 9, color: "#9ee7ff" },
-  steel_armor: { name: "Stahlpanzer", icon: "T", type: "armor", rarity: "epic", defense: 16, color: "#c084fc" },
-  dragon_plate: { name: "Drachenplatte", icon: "D", type: "armor", rarity: "legendary", defense: 26, color: "#fff2a8" },
-  metin_shard: { name: "Metin-Splitter", icon: "*", type: "material", rarity: "rare" },
-  pugna_core: { name: "Pugna-Kern", icon: "O", type: "material", rarity: "epic" },
-  gem: { name: "Kristall", icon: "<>", type: "material", rarity: "rare" },
+  health_potion: { name: "Roter Trank", icon: "♥", type: "potion", rarity: "common", heal: 32 },
+  rust_sword: { name: "Rostklinge", icon: "†", type: "weapon", rarity: "common", attack: 3, color: "#d9dee5", glow: "rgba(217,222,229,0.18)", reach: 82, cooldown: 0.42 },
+  iron_blade: { name: "Eisenklinge", icon: "⚔", type: "weapon", rarity: "rare", attack: 8, color: "#9ee7ff", glow: "rgba(85,215,255,0.28)", reach: 92, cooldown: 0.38 },
+  metin_glaive: { name: "Metin-Gleve", icon: "⚒", type: "weapon", rarity: "rare", attack: 14, color: "#55d7ff", glow: "rgba(85,215,255,0.36)", reach: 108, cooldown: 0.36 },
+  pugna_cleaver: { name: "Pugna-Spalter", icon: "⛏", type: "weapon", rarity: "epic", attack: 21, color: "#c084fc", glow: "rgba(192,132,252,0.42)", reach: 118, cooldown: 0.46 },
+  storm_saber: { name: "Sturmsaebel", icon: "⚡", type: "weapon", rarity: "epic", attack: 17, color: "#f4c95d", glow: "rgba(244,201,93,0.42)", reach: 102, cooldown: 0.28 },
+  fullmoon_sickle: { name: "Vollmondsichel", icon: "☾", type: "weapon", rarity: "legendary", attack: 29, color: "#fff2a8", glow: "rgba(244,201,93,0.48)", reach: 132, cooldown: 0.33 },
+  leather_armor: { name: "Lederweste", icon: "🛡", type: "armor", rarity: "common", defense: 4, color: "#a98056" },
+  iron_armor: { name: "Eisenharnisch", icon: "🛡", type: "armor", rarity: "rare", defense: 9, color: "#9ee7ff" },
+  steel_armor: { name: "Stahlpanzer", icon: "🛡", type: "armor", rarity: "epic", defense: 16, color: "#c084fc" },
+  dragon_plate: { name: "Drachenplatte", icon: "🐉", type: "armor", rarity: "legendary", defense: 26, color: "#fff2a8" },
+  metin_shard: { name: "Metin-Splitter", icon: "✦", type: "material", rarity: "rare" },
+  pugna_core: { name: "Pugna-Kern", icon: "⬢", type: "material", rarity: "epic" },
+  gem: { name: "Kristall", icon: "◆", type: "material", rarity: "rare" },
 };
+
+const MAX_STACK = 128;
 
 function item(id, count = 1) {
   return { id, count };
@@ -307,9 +312,33 @@ ui.upgradeWeapon.addEventListener("click", () => upgradeAtBlacksmith("weapon"));
 ui.upgradeArmor.addEventListener("click", () => upgradeAtBlacksmith("armor"));
 
 ui.sortInventory.addEventListener("click", () => {
-  const equipped = equippedWeaponItem();
+  const equippedWeapon = equippedWeaponItem();
+  const equippedArmor = equippedArmorItem();
+  // merge identical stacks (same id + upgrade), skipping equipped slots
+  for (let i = 0; i < player.inventory.length; i += 1) {
+    const cur = player.inventory[i];
+    if (!cur || cur === equippedWeapon || cur === equippedArmor) continue;
+    for (let j = i + 1; j < player.inventory.length; ) {
+      const other = player.inventory[j];
+      if (!other || other === equippedWeapon || other === equippedArmor) { j += 1; continue; }
+      if (other.id === cur.id && (other.upgrade || 0) === (cur.upgrade || 0)) {
+        const space = MAX_STACK - (cur.count || 1);
+        if (space > 0) {
+          const move = Math.min(other.count || 1, space);
+          cur.count = (cur.count || 1) + move;
+          other.count = (other.count || 1) - move;
+          if (other.count <= 0) {
+            player.inventory.splice(j, 1);
+            continue;
+          }
+        }
+      }
+      j += 1;
+    }
+  }
   player.inventory.sort((a, b) => itemDefs[a.id].name.localeCompare(itemDefs[b.id].name));
-  player.weaponIndex = Math.max(0, player.inventory.indexOf(equipped));
+  player.weaponIndex = equippedWeapon ? player.inventory.indexOf(equippedWeapon) : -1;
+  player.armorIndex = equippedArmor ? player.inventory.indexOf(equippedArmor) : -1;
   renderInventory();
 });
 
@@ -1133,18 +1162,42 @@ function gainXp(amount) {
   }
 }
 
+function findStackTarget(id, upgrade) {
+  const def = itemDefs[id];
+  if (!def) return -1;
+  const isEquippable = def.type === "weapon" || def.type === "armor";
+  return player.inventory.findIndex((entry, i) => {
+    if (entry.id !== id) return false;
+    if (isEquippable) {
+      if (i === player.weaponIndex || i === player.armorIndex) return false;
+      if ((entry.upgrade || 0) !== (upgrade || 0)) return false;
+    }
+    return (entry.count || 1) < MAX_STACK;
+  });
+}
+
 function addInventory(id, count = 1) {
   const def = itemDefs[id];
-  if (def?.type === "weapon" || def?.type === "armor") {
-    player.inventory.push({ id, count: 1, upgrade: 0 });
-    showToast(`${def.name} erhalten.`);
-    renderInventory();
-    return;
+  if (!def) return;
+  const isEquippable = def.type === "weapon" || def.type === "armor";
+  let remaining = count;
+  while (remaining > 0) {
+    const idx = findStackTarget(id, 0);
+    if (idx >= 0) {
+      const stack = player.inventory[idx];
+      const space = MAX_STACK - (stack.count || 1);
+      const add = Math.min(remaining, space);
+      stack.count = (stack.count || 1) + add;
+      remaining -= add;
+    } else {
+      const take = Math.min(remaining, MAX_STACK);
+      const entry = { id, count: take };
+      if (isEquippable) entry.upgrade = 0;
+      player.inventory.push(entry);
+      remaining -= take;
+    }
   }
-  const found = player.inventory.find((entry) => entry.id === id);
-  if (found) found.count += count;
-  else player.inventory.push(item(id, count));
-  showToast(`${def.name} erhalten.`);
+  showToast(`${def.name}${count > 1 ? ` x${count}` : ""} erhalten.`);
   renderInventory();
 }
 
@@ -1158,18 +1211,33 @@ function usePotion() {
   renderInventory();
 }
 
+function splitStackForEquip(index) {
+  const entry = player.inventory[index];
+  if (!entry) return index;
+  if ((entry.count || 1) <= 1) {
+    if (typeof entry.upgrade !== "number") entry.upgrade = 0;
+    return index;
+  }
+  entry.count -= 1;
+  const split = { id: entry.id, count: 1, upgrade: entry.upgrade || 0 };
+  player.inventory.push(split);
+  return player.inventory.length - 1;
+}
+
 function equipWeapon(indexOrId) {
-  const index = typeof indexOrId === "number"
+  let index = typeof indexOrId === "number"
     ? indexOrId
     : player.inventory.findIndex((entry) => entry.id === indexOrId && itemDefs[entry.id]?.type === "weapon");
+  if (index < 0) return;
   const invItem = player.inventory[index];
-  if (!invItem) return;
-  const id = invItem.id;
-  const def = itemDefs[id];
-  player.weapon = id;
+  if (!invItem || itemDefs[invItem.id]?.type !== "weapon") return;
+  index = splitStackForEquip(index);
+  const equipped = player.inventory[index];
+  const def = itemDefs[equipped.id];
+  player.weapon = equipped.id;
   player.weaponIndex = index;
   player.attackBonus = def.attack || 0;
-  const upgrade = invItem.upgrade || 0;
+  const upgrade = equipped.upgrade || 0;
   showToast(`${def.name}${upgrade ? ` +${upgrade}` : ""} ausgeruestet.`);
   renderInventory();
 }
@@ -1177,9 +1245,11 @@ function equipWeapon(indexOrId) {
 function equipArmor(index) {
   const invItem = player.inventory[index];
   if (!invItem || itemDefs[invItem.id]?.type !== "armor") return;
-  player.armorIndex = index;
-  const def = itemDefs[invItem.id];
-  const upgrade = invItem.upgrade || 0;
+  const newIndex = splitStackForEquip(index);
+  player.armorIndex = newIndex;
+  const equipped = player.inventory[newIndex];
+  const def = itemDefs[equipped.id];
+  const upgrade = equipped.upgrade || 0;
   showToast(`${def.name}${upgrade ? ` +${upgrade}` : ""} angelegt (+${def.defense + upgrade * 4} Verteidigung).`);
   renderInventory();
 }
@@ -1447,6 +1517,7 @@ function updateUi() {
   const armor = equippedArmorItem();
   const totalDef = totalDefense();
   ui.armorText.textContent = armor ? `${itemDefs[armor.id].name.split(" ")[0]} +${armor.upgrade || 0} (${totalDef})` : `+${player.armorLevel} (${totalDef})`;
+  if (ui.gearStats) ui.gearStats.textContent = `Angriff ${attackPower()} / Verteidigung ${totalDef}`;
   updateBlacksmithUi();
   updateSkillButton(ui.skillAura, player.auraCooldown, 18, player.swordAura > 0 ? `Aktiv ${player.swordAura.toFixed(1)}s` : "Schwertverbesserung");
   updateSkillButton(ui.skillCrescent, player.crescentCooldown, currentWeapon().id === "fullmoon_sickle" ? 5.5 : 8, "Sichelhieb");
@@ -1471,6 +1542,34 @@ function updateSkillButton(button, cooldown, maxCooldown, label) {
   if (strong) strong.textContent = cooldown > 0 ? `${label} ${cooldown.toFixed(1)}s` : label;
 }
 
+function rarityLabel(rarity) {
+  return { common: "Gewoehnlich", rare: "Selten", epic: "Episch", legendary: "Legendaer" }[rarity] || rarity;
+}
+
+function itemTooltip(invItem) {
+  const def = itemDefs[invItem.id];
+  if (!def) return "";
+  const upgrade = invItem.upgrade || 0;
+  const lines = [`${def.name}${upgrade ? ` +${upgrade}` : ""}`];
+  lines.push(`Seltenheit: ${rarityLabel(def.rarity)}`);
+  if (def.type === "weapon") {
+    lines.push(`Schaden: +${def.attack + upgrade * 3}`);
+    if (def.reach) lines.push(`Reichweite: ${def.reach}`);
+    if (def.cooldown) lines.push(`Hieb: ${def.cooldown.toFixed(2)}s`);
+    lines.push("Klick: ausruesten");
+  } else if (def.type === "armor") {
+    lines.push(`Verteidigung: +${def.defense + upgrade * 4}`);
+    lines.push("Klick: anlegen");
+  } else if (def.type === "potion") {
+    lines.push(`Heilt: ${def.heal} HP`);
+    lines.push("Klick: trinken");
+  } else {
+    lines.push("Material fuer Schmied");
+  }
+  if ((invItem.count || 1) > 1) lines.push(`Stack: ${invItem.count} / ${MAX_STACK}`);
+  return lines.join("\n");
+}
+
 function renderInventory() {
   ui.inventory.innerHTML = "";
   const slots = 20;
@@ -1490,17 +1589,48 @@ function renderInventory() {
     slot.classList.add(def.rarity);
     if (def.type === "weapon" && player.weaponIndex === i) slot.classList.add("equipped");
     if (def.type === "armor" && player.armorIndex === i) slot.classList.add("equipped");
-    const stat = def.attack
-      ? ` (+${def.attack + (invItem.upgrade || 0) * 3} Angriff)`
-      : def.defense
-        ? ` (+${def.defense + (invItem.upgrade || 0) * 4} Verteidigung)`
-        : "";
-    slot.title = `${itemLabel(invItem)}${stat}${def.type === "weapon" || def.type === "armor" ? " — Klick zum ausruesten" : ""}`;
-    slot.setAttribute("aria-label", slot.title);
+    const tooltip = itemTooltip(invItem);
+    slot.dataset.tooltip = tooltip;
+    slot.title = tooltip;
+    slot.setAttribute("aria-label", tooltip);
     const upgrade = invItem.upgrade ? `<span class="upgrade">+${invItem.upgrade}</span>` : "";
     slot.innerHTML = `<span class="icon">${def.icon}</span>${upgrade}<span class="count">${invItem.count}</span>`;
     ui.inventory.append(slot);
   }
+  renderEquipment();
+}
+
+function renderEquipment() {
+  if (!ui.gearWeapon || !ui.gearArmor) return;
+  const weapon = equippedWeaponItem();
+  const armor = equippedArmorItem();
+  const fillSlot = (el, entry, fallbackLabel) => {
+    el.classList.remove("rare", "epic", "legendary", "common", "empty");
+    const labelEl = el.querySelector(".gear-label");
+    const iconEl = el.querySelector(".gear-icon");
+    const nameEl = el.querySelector(".gear-name");
+    if (!entry) {
+      el.classList.add("empty");
+      labelEl.textContent = fallbackLabel;
+      iconEl.textContent = "—";
+      nameEl.textContent = "leer";
+      el.dataset.tooltip = `${fallbackLabel} – nichts ausgeruestet`;
+      el.title = el.dataset.tooltip;
+      return;
+    }
+    const def = itemDefs[entry.id];
+    el.classList.add(def.rarity);
+    labelEl.textContent = fallbackLabel;
+    iconEl.textContent = def.icon;
+    const up = entry.upgrade || 0;
+    nameEl.innerHTML = `${def.name}${up ? `<span class="upgrade-tag">+${up}</span>` : ""}`;
+    const tooltip = itemTooltip(entry);
+    el.dataset.tooltip = tooltip;
+    el.title = tooltip;
+  };
+  fillSlot(ui.gearWeapon, weapon, "Waffe");
+  fillSlot(ui.gearArmor, armor, "Ruestung");
+  if (ui.gearStats) ui.gearStats.textContent = `Angriff ${attackPower()} / Verteidigung ${totalDefense()}`;
 }
 
 function draw() {
