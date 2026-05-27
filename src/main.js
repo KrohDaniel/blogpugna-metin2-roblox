@@ -4725,7 +4725,7 @@ function update(dt) {
       size: 3 + Math.random() * 4,
     });
   }
-  const runHostSim = (!multiplayerReady || isHost) && !isPvpActive() && !currentWorld().noWildMobs;
+  const runHostSim = (!multiplayerReady || isHost) && !isPvpActive() && !currentWorld().noWildMobs && !currentWorld().passiveMobs;
   if (runHostSim) {
     waveTimer -= dt;
     minibossTimer -= dt;
