@@ -165,6 +165,7 @@ const dyingMobs = []; // { x, y, color, scale, life, maxLife, rot }
 let comboCount = 0;
 let comboTimer = 0;
 let comboMaxDmg = 0;
+const insectSwarm = []; // { x, y, vx, vy, target, life }
 let traderMode = "buy";
 let trainerLastReset = 0;
 let courierState = null;
@@ -262,7 +263,8 @@ function attackPower() {
   const classBonus = 0;
   const powerBonus = player.powerWindow > 0 ? 10 + Math.floor(player.level * 0.7) : 0;
   const talentBonus = talentEffect("attackBonusFlat");
-  return Math.round(player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5));
+  const bearMult = player.bearForm > 0 ? 1.4 : 1;
+  return Math.round((player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5)) * bearMult);
 }
 
 function currentWeapon() {
@@ -2805,8 +2807,8 @@ function swing() {
   mouse.worldY = mouse.y + cam.y;
   const angle = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
 
-  // Ranged path (Magier / staff)
-  const isRanged = weapon.style === "staff" || classDef.weaponStyle === "staff";
+  // Ranged path (Magier / staff) — aber Bär-Form ist immer Melee
+  const isRanged = (weapon.style === "staff" || classDef.weaponStyle === "staff") && !(player.bearForm > 0);
   if (isRanged) {
     fireProjectile(weapon, classDef, angle);
     return;
@@ -3235,6 +3237,9 @@ function useAbility(abilityId) {
     earthquake,
     shadowDouble,
     meteor,
+    rootSnare,
+    swarmCall,
+    bearForm,
   };
   handlers[abilityId]?.();
   setAbilityCooldown(abilityId);
@@ -3641,6 +3646,115 @@ function meteor() {
     damagePvpBot(attackPower() * 3.0 * dmgMult);
   }
   showToast("Meteor!");
+}
+
+function rootSnare() {
+  const angle = aimAngle();
+  let rooted = 0;
+  for (const mob of [...mobs]) {
+    if (!isInCone(mob, angle, 220, 95)) continue;
+    applyStatus(mob, "stunned", 3);
+    damageMob(mob, Math.floor(attackPower() * 0.5), { tag: "stun" });
+    // Visualisierung
+    for (let i = 0; i < 8; i += 1) {
+      particles.push({
+        x: mob.x + (Math.random() - 0.5) * 30,
+        y: mob.y + 20,
+        vx: 0,
+        vy: -80 - Math.random() * 60,
+        life: 0.6,
+        color: "#3f7d35",
+        size: 4,
+      });
+    }
+    rooted += 1;
+  }
+  showToast(`${rooted} Gegner verwurzelt.`);
+}
+
+function swarmCall() {
+  // 5 Insekten spawnen
+  for (let i = 0; i < 5; i += 1) {
+    const a = (i / 5) * Math.PI * 2;
+    insectSwarm.push({
+      x: player.x + Math.cos(a) * 20,
+      y: player.y + Math.sin(a) * 20,
+      vx: 0, vy: 0,
+      life: 4,
+      target: null,
+      damage: Math.round(attackPower() * 0.18),
+    });
+  }
+}
+
+function bearForm() {
+  player.bearForm = 8;
+  player.bearFormMaxHpBoost = Math.round(player.maxHp * 0.5);
+  player.maxHp += player.bearFormMaxHpBoost;
+  player.hp += player.bearFormMaxHpBoost;
+  showToast("Bär-Form aktiv: +50% HP, +40% Schaden!");
+  for (let i = 0; i < 30; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    particles.push({
+      x: player.x, y: player.y,
+      vx: Math.cos(a) * 180,
+      vy: Math.sin(a) * 180,
+      life: 0.6,
+      color: i % 2 === 0 ? "#92400e" : "#a3e635",
+      size: 4,
+    });
+  }
+}
+
+function updateInsectSwarm(dt) {
+  for (let i = insectSwarm.length - 1; i >= 0; i -= 1) {
+    const ins = insectSwarm[i];
+    ins.life -= dt;
+    if (ins.life <= 0) { insectSwarm.splice(i, 1); continue; }
+    // Ziel suchen
+    if (!ins.target || ins.target.hp <= 0 || !mobs.includes(ins.target)) {
+      let best = null, bd = 400;
+      for (const mob of mobs) {
+        const d = Math.hypot(mob.x - ins.x, mob.y - ins.y);
+        if (d < bd) { bd = d; best = mob; }
+      }
+      ins.target = best;
+    }
+    if (ins.target) {
+      const dx = ins.target.x - ins.x;
+      const dy = ins.target.y - ins.y;
+      const d = Math.hypot(dx, dy) || 1;
+      ins.vx = (dx / d) * 280;
+      ins.vy = (dy / d) * 280;
+      if (d < 14) {
+        damageMob(ins.target, ins.damage);
+        // Insekt geht zurück Richtung Spieler
+        ins.target = null;
+        ins.life = Math.max(0.4, ins.life - 0.4);
+      }
+    } else {
+      // Idle: zum Spieler zurück
+      const dx = player.x - ins.x, dy = player.y - ins.y;
+      const d = Math.hypot(dx, dy) || 1;
+      ins.vx = (dx / d) * 120;
+      ins.vy = (dy / d) * 120;
+    }
+    ins.x += ins.vx * dt + Math.sin(performance.now() / 80 + i) * 4 * dt;
+    ins.y += ins.vy * dt + Math.cos(performance.now() / 80 + i) * 4 * dt;
+  }
+}
+
+function drawInsectSwarm() {
+  for (const ins of insectSwarm) {
+    ctx.save();
+    ctx.fillStyle = "rgba(163, 230, 53, 0.5)";
+    ctx.fillRect(ins.x - 5, ins.y - 5, 10, 10);
+    ctx.fillStyle = "#a3e635";
+    ctx.fillRect(ins.x - 3, ins.y - 3, 6, 6);
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(ins.x - 1, ins.y - 1, 2, 2);
+    ctx.restore();
+  }
 }
 
 function frostCircle() {
@@ -5010,6 +5124,22 @@ function update(dt) {
     player.swingAnim.t = Math.max(0, player.swingAnim.t - dt);
   }
   if (player.hitFlash > 0) player.hitFlash = Math.max(0, player.hitFlash - dt);
+  updateInsectSwarm(dt);
+  // Bär-Form Tick
+  if (player.bearForm > 0) {
+    player.bearForm -= dt;
+    if (player.bearForm <= 0) {
+      // Boost wieder weg
+      player.maxHp -= player.bearFormMaxHpBoost || 0;
+      player.hp = Math.min(player.hp, player.maxHp);
+      player.bearFormMaxHpBoost = 0;
+      showToast("Bär-Form vorbei.");
+    }
+  }
+  // Druid-Passive: Natur-Regen in Wiesen + Sumpf
+  if (player.classId === "druid" && (currentWorldId === "meadows" || currentWorldId === "shadowfen") && player.hp < player.maxHp && player.hp > 0) {
+    player.hp = Math.min(player.maxHp, player.hp + 2 * dt);
+  }
   // Combo-Decay
   if (comboTimer > 0) {
     comboTimer -= dt;
@@ -5457,6 +5587,7 @@ function draw() {
   drawProjectiles();
   drawPvpBot();
   drawPet();
+  drawInsectSwarm();
   drawShadowDecoy();
   drawPlayer();
   drawParticles();
@@ -6139,15 +6270,36 @@ function drawPlayer() {
   const breath = moved < 0.5 ? Math.sin(performance.now() / 700) * 1.2 : 0;
   ctx.save();
   if (invis) ctx.globalAlpha = 0.28;
+  const bearActive = player.bearForm > 0;
+  const bodyColor = bearActive ? "#7c3a1d" : classDef.color;
+  const headColor = bearActive ? "#92400e" : "#f3c7a1";
+  const armColor = bearActive ? "#7c3a1d" : "#f3c7a1";
+  const legColor = bearActive ? "#5b2a13" : (classDef.id === "warrior" ? "#5d2f28" : classDef.id === "shadow" ? "#26214f" : "#21513d");
+  const playerScale = bearActive ? 1.35 : 1.05;
   drawBlockPerson(player.x, player.y, {
-    head: "#f3c7a1",
-    body: classDef.color,
-    arms: "#f3c7a1",
-    legs: classDef.id === "warrior" ? "#5d2f28" : classDef.id === "shadow" ? "#26214f" : "#21513d",
-  }, 1.05, facing, player.invuln > 0 && Math.floor(performance.now() / 80) % 2 === 0,
+    head: headColor,
+    body: bodyColor,
+    arms: armColor,
+    legs: legColor,
+  }, playerScale, facing, (player.invuln > 0 && Math.floor(performance.now() / 80) % 2 === 0) || player.hitFlash > 0,
     classDef.bodyAccent, classDef.accent, player.walkPhase, breath);
-  drawEquippedWeapon(facing, classDef);
+  if (!bearActive) drawEquippedWeapon(facing, classDef);
   ctx.restore();
+  // Bear-Form-Aura
+  if (bearActive) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(146, 64, 14, 0.6)";
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r + 22 + Math.sin(performance.now() / 100) * 4, 0, Math.PI * 2);
+    ctx.stroke();
+    // Sekunden-Anzeige
+    ctx.font = "bold 12px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#a3e635";
+    ctx.fillText(`Bär ${player.bearForm.toFixed(1)}s`, player.x, player.y - 80);
+    ctx.restore();
+  }
   // Dash-Crit-Window-Aura
   if (classDef.id === "shadow" && player.dashCritWindow > 0) {
     ctx.save();
