@@ -6505,18 +6505,64 @@ function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, acce
     ctx.fillStyle = hurt ? "#ffffff" : "#f4c95d";
     ctx.fillRect(-3 * scale, -86 * scale, 6 * scale, 6 * scale);
   } else if (accent === "diadem") {
-    // Goldenes Diadem mit Edelstein
+    // === Weiblicher Look: lange Haare, Kleid, rote Lippen, Diadem ===
+    const hairColor = hurt ? "#ffffff" : "#1a1830";
+    const dressColor = hurt ? "#ffffff" : "#ec4899";
+    const dressTrim = hurt ? "#ffffff" : "#f5d042";
+    const lipColor = hurt ? "#ffffff" : "#dc2626";
+
+    // Lange wallende Haare hinten (deckt Ruecken + reicht bis Hueftbereich)
+    ctx.fillStyle = hairColor;
+    // Haar-Schicht hinter dem Kopf (breiter als Kopf)
+    ctx.fillRect(-19 * scale, -56 * scale, 38 * scale, 6 * scale);
+    // Haare seitlich am Kopf herunter
+    ctx.fillRect(-19 * scale, -50 * scale, 5 * scale, 28 * scale);
+    ctx.fillRect(14 * scale, -50 * scale, 5 * scale, 28 * scale);
+    // Lange Haare ueber Schultern bis zu Hueftbereich
+    ctx.fillRect(-22 * scale, -22 * scale, 5 * scale, 28 * scale);
+    ctx.fillRect(17 * scale, -22 * scale, 5 * scale, 28 * scale);
+    // Haar-Spitze (V-Form unten)
+    ctx.fillRect(-20 * scale, 6 * scale, 4 * scale, 6 * scale);
+    ctx.fillRect(16 * scale, 6 * scale, 4 * scale, 6 * scale);
+
+    // Kleid: Trapezform die Beine umhuellt, breit unten
+    ctx.fillStyle = dressColor;
+    // Oberteil (Korsage) ueber dem Koerper
+    ctx.fillRect(-16 * scale, -10 * scale, 32 * scale, 22 * scale);
+    // Rock (Trapez): mehrere Reihen die nach unten breiter werden
+    ctx.fillRect(-18 * scale, 12 * scale, 36 * scale, 6 * scale);
+    ctx.fillRect(-22 * scale, 18 * scale, 44 * scale, 6 * scale);
+    ctx.fillRect(-26 * scale, 24 * scale, 52 * scale, 8 * scale);
+    // Goldener Saum unten
+    ctx.fillStyle = dressTrim;
+    ctx.fillRect(-26 * scale, 30 * scale, 52 * scale, 2 * scale);
+    // Goldener Guertel ueber dem Rock
+    ctx.fillRect(-16 * scale, 10 * scale, 32 * scale, 2 * scale);
+    // Goldener Korsage-Akzent vorne
+    ctx.fillRect(-2 * scale, -8 * scale, 4 * scale, 18 * scale);
+
+    // Rote Lippen
+    ctx.fillStyle = lipColor;
+    ctx.fillRect(-3 * scale, -34 * scale, 6 * scale, 2 * scale);
+    ctx.fillRect(-2 * scale, -32 * scale, 4 * scale, 1.5 * scale);
+
+    // Roetlicher Wangen-Hauch
+    ctx.fillStyle = hurt ? "#ffffff" : "rgba(236, 72, 153, 0.55)";
+    ctx.fillRect(-12 * scale, -38 * scale, 4 * scale, 3 * scale);
+    ctx.fillRect(8 * scale, -38 * scale, 4 * scale, 3 * scale);
+
+    // Goldenes Diadem oben mit pinkem Edelstein
     const gold = hurt ? "#ffffff" : (accentColor || "#f5d042");
     ctx.fillStyle = gold;
     ctx.fillRect(-14 * scale, -58 * scale, 28 * scale, 4 * scale);
     ctx.fillRect(-2 * scale, -62 * scale, 4 * scale, 6 * scale);
-    // Edelstein
     ctx.fillStyle = hurt ? "#ffffff" : "#ec4899";
     ctx.fillRect(-2 * scale, -60 * scale, 4 * scale, 3 * scale);
-    // Zwei Pony-Tail-Pixel
-    ctx.fillStyle = hurt ? "#ffffff" : "#1a1830";
-    ctx.fillRect(-22 * scale, -46 * scale, 6 * scale, 14 * scale);
-    ctx.fillRect(16 * scale, -46 * scale, 6 * scale, 14 * scale);
+
+    // Pony / Haar-Strang vorne (kleiner Strang ueber der Stirn)
+    ctx.fillStyle = hairColor;
+    ctx.fillRect(-12 * scale, -54 * scale, 5 * scale, 4 * scale);
+    ctx.fillRect(7 * scale, -54 * scale, 5 * scale, 4 * scale);
   }
   ctx.restore();
 }
