@@ -1496,6 +1496,9 @@ const joyEl = document.getElementById("touchJoystick");
 const joyKnob = document.getElementById("touchJoyKnob");
 let joyActive = false;
 let joyStartX = 0, joyStartY = 0;
+let joyDirX = 0, joyDirY = 0;        // Live analog-Richtung (normiert -1..1)
+let joyLastDirX = 0, joyLastDirY = 0; // Letzte aktive Richtung (haelt fuer Skills)
+let joyLastTime = 0;                  // Wann der Joystick zuletzt aktiv war
 const JOY_RADIUS = 50;
 
 function setJoyKnob(dx, dy) {
@@ -1507,6 +1510,16 @@ function joyUpdateDir(dx, dy) {
   const clampedX = len > JOY_RADIUS ? (dx / len) * JOY_RADIUS : dx;
   const clampedY = len > JOY_RADIUS ? (dy / len) * JOY_RADIUS : dy;
   setJoyKnob(clampedX, clampedY);
+  // Analog-Direction (normiert auf -1..1)
+  if (len > 12) {
+    joyDirX = clampedX / JOY_RADIUS;
+    joyDirY = clampedY / JOY_RADIUS;
+    joyLastDirX = joyDirX;
+    joyLastDirY = joyDirY;
+    joyLastTime = performance.now();
+  } else {
+    joyDirX = 0; joyDirY = 0;
+  }
   // Threshold um Wackeln zu vermeiden
   const thresh = 12;
   joyKeys.w = clampedY < -thresh;
@@ -1601,20 +1614,22 @@ document.getElementById("touchSwitchChar")?.addEventListener("click", () => {
   document.getElementById("switchCharBtn")?.click();
 });
 
-// Canvas-Tap: bestimmt Blickrichtung fuer den naechsten Auto-Attack (nur im rechten Bereich)
+// Canvas-Tap: setzt manuelles Aim-Target (haelt fuer 2.5s)
 canvas.addEventListener("touchstart", (e) => {
   if (!isTouchDevice) return;
   const t = e.changedTouches[0];
   const rect = canvas.getBoundingClientRect();
   const x = t.clientX - rect.left;
   const y = t.clientY - rect.top;
-  // Nur rechte Bildschirmhaelfte: setzt Maus-Pointer (Aim) — Skill-Buttons sind ohnehin auf der rechten Seite
+  // Nur rechte Bildschirmhaelfte: bestimme Aim
   if (x > rect.width * 0.4) {
     e.preventDefault();
     mouse.x = x;
     mouse.y = y;
+    manualAimUntil = performance.now() + 2500; // Manuelles Aim ueberschreibt Joystick/Auto 2.5s
   }
 }, { passive: false });
+let manualAimUntil = 0;
 
 // Doppel-Tap zum Angreifen (anywhere ausser ueber UI)
 let lastTap = 0;
@@ -4881,6 +4896,36 @@ function crescentStrike() {
   showToast("Sichelhieb entfesselt.");
 }
 
+function drawAimIndicator() {
+  const angle = aimAngle();
+  const target = findNearestMob();
+  ctx.save();
+  ctx.translate(player.x, player.y);
+  ctx.rotate(angle);
+  // Pfeil-Spitze (3 Pixel-Rects)
+  ctx.globalAlpha = 0.85;
+  ctx.fillStyle = "#fde047";
+  ctx.shadowColor = "#fde047";
+  ctx.shadowBlur = 8;
+  ctx.fillRect(38, -3, 14, 6);
+  ctx.fillRect(48, -6, 6, 12);
+  ctx.fillRect(54, -3, 4, 6);
+  ctx.restore();
+  // Aim-Reticle ueber dem Auto-Target (wenn Auto-Aim aktiv)
+  if (target && !joyActive && performance.now() >= manualAimUntil) {
+    ctx.save();
+    const r = target.r + 18 + Math.sin(performance.now() / 200) * 3;
+    ctx.strokeStyle = "rgba(253, 224, 71, 0.85)";
+    ctx.lineWidth = 2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.arc(target.x, target.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+}
+
 function findNearestMob(maxDist = 480) {
   let best = null;
   let bestD = maxDist;
@@ -4893,13 +4938,29 @@ function findNearestMob(maxDist = 480) {
 }
 
 function aimAngle() {
-  // Auto-Aim: auf Touch-Geraeten ODER wenn Maus nicht aktiv → naechstes Mob
-  if (isTouchDevice || player.autoAim) {
+  if (isTouchDevice) {
+    // Prioritaet 1: aktiver Joystick → Skills folgen Bewegungsrichtung
+    if (joyActive && (joyDirX !== 0 || joyDirY !== 0)) {
+      return Math.atan2(joyDirY, joyDirX);
+    }
+    // Prioritaet 2: manuelles Tap-Aim (haelt 2.5s)
+    if (performance.now() < manualAimUntil) {
+      const cam = camera();
+      return Math.atan2((mouse.y + cam.y) - player.y, (mouse.x + cam.x) - player.x);
+    }
+    // Prioritaet 3: kuerzlich aktiver Joystick (haelt 1s nach Loslassen)
+    if (performance.now() - joyLastTime < 1000 && (joyLastDirX !== 0 || joyLastDirY !== 0)) {
+      return Math.atan2(joyLastDirY, joyLastDirX);
+    }
+    // Prioritaet 4: Auto-Aim auf naechstes Mob
     const target = findNearestMob();
     if (target) {
       return Math.atan2(target.y - player.y, target.x - player.x);
     }
+    // Fallback: blicke nach rechts
+    return 0;
   }
+  // Desktop: Maus
   const cam = camera();
   mouse.worldX = mouse.x + cam.x;
   mouse.worldY = mouse.y + cam.y;
@@ -7646,6 +7707,8 @@ function drawPlayer() {
     classDef.bodyAccent, classDef.accent, player.walkPhase, breath);
   if (!bearActive) drawEquippedWeapon(facing, classDef);
   ctx.restore();
+  // Touch: Aim-Pfeil zeigt aktuelle Skill-Richtung
+  if (isTouchDevice) drawAimIndicator();
   // Bear-Form-Aura
   if (bearActive) {
     ctx.save();
