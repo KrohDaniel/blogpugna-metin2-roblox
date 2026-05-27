@@ -1,3 +1,51 @@
+#updateBanner {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  padding: 10px 16px;
+  background: linear-gradient(90deg, rgba(244,201,93,0.18), rgba(244,201,93,0.08));
+  border: 1px solid #f4c95d;
+  color: #f4c95d;
+  font: 600 13px/1.2 system-ui, sans-serif;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  animation: updBannerIn 280ms ease both;
+}
+#updateBanner .ub-content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+#updateBanner .ub-icon {
+  font-size: 18px;
+  animation: ubSpin 2s linear infinite;
+}
+#updateBanner .ub-text strong { color: #fff2a8; }
+#updateBanner button {
+  border: 1px solid #f4c95d;
+  background: #f4c95d;
+  color: #17180f;
+  padding: 6px 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+#updateBanner button.ub-dismiss {
+  background: transparent;
+  color: #f4c95d;
+  padding: 4px 8px;
+  font-size: 16px;
+  line-height: 1;
+}
+@keyframes updBannerIn {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+@keyframes ubSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 :root {
   color-scheme: dark;
   --bg: #151812;

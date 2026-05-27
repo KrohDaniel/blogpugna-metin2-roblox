@@ -178,6 +178,52 @@ let mergeSlots = [null, null, null];
 let smithMode = "weapon";
 let codexWorldId = "meadows";
 let last = performance.now();
+
+// === AUTO-UPDATE-DETECTION ===
+// Liest beim Start die aktuell geladene Version aus dem ?v=-Cache-Param,
+// pollt dann alle 60s version.json. Wenn anders → Reload-Banner.
+let loadedVersion = null;
+let updateBannerShown = false;
+function getLoadedVersion() {
+  if (loadedVersion) return loadedVersion;
+  const scripts = document.querySelectorAll("script[src*='?v=']");
+  for (const s of scripts) {
+    const m = s.src.match(/[?&]v=([^&]+)/);
+    if (m) { loadedVersion = m[1]; return loadedVersion; }
+  }
+  return null;
+}
+async function checkForUpdate() {
+  if (updateBannerShown) return;
+  try {
+    const res = await fetch(`./version.json?t=${Date.now()}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.version) return;
+    const loaded = getLoadedVersion();
+    if (loaded && data.version !== loaded) showUpdateBanner(data.version);
+  } catch {}
+}
+function showUpdateBanner(newVersion) {
+  if (updateBannerShown) return;
+  updateBannerShown = true;
+  const banner = document.createElement("div");
+  banner.id = "updateBanner";
+  banner.innerHTML = `
+    <div class="ub-content">
+      <span class="ub-icon">⟳</span>
+      <span class="ub-text">Neue Version verfügbar: <strong>${newVersion}</strong></span>
+      <button id="ubReload" type="button">Neu laden</button>
+      <button id="ubDismiss" type="button" class="ub-dismiss">×</button>
+    </div>
+  `;
+  document.body.appendChild(banner);
+  document.querySelector("#ubReload").addEventListener("click", () => location.reload());
+  document.querySelector("#ubDismiss").addEventListener("click", () => banner.remove());
+}
+// Initialer Check + alle 60s pollen
+setTimeout(checkForUpdate, 10000);
+setInterval(checkForUpdate, 60000);
 let mouse = { x: canvas.width / 2, y: canvas.height / 2, worldX: 0, worldY: 0 };
 let toastTimer = 0;
 let waveTimer = 3.5;
