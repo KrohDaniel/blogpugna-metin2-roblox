@@ -290,6 +290,15 @@ const player = {
   weapon: "rust_sword",
   weaponIndex: 1,
   armorIndex: 2,
+  // Combo + Klassen-Resourcen
+  comboMeter: 0,        // 0-100, fuellt sich durch Skill+Auto-Combos
+  comboTimer: 0,        // > 0 = Combo aktiv, faellt sonst
+  rage: 0,              // Krieger 0-100
+  markCount: 0,         // Schatten — Live-count markierter Mobs
+  fireCharges: 0,       // Magier 0-3
+  frostCharges: 0,      // Magier 0-3
+  formEnergy: 0,        // Druidin 0-100 (laedt im Stab-Modus)
+  charmStacksDecayTimer: 0, // Lyra Stack-Decay (8s)
 };
 
 const defaultPlayerState = {
@@ -315,7 +324,19 @@ function attackPower() {
   const powerBonus = player.powerWindow > 0 ? 10 + Math.floor(player.level * 0.7) : 0;
   const talentBonus = talentEffect("attackBonusFlat");
   const bearMult = player.bearForm > 0 ? 1.4 : 1;
-  return Math.round((player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5)) * bearMult);
+  // Rage-Bonus (Krieger): ab 50 Rage +10%, ab 100 +25%
+  let rageMult = 1;
+  if (player.classId === "warrior") {
+    if ((player.rage || 0) >= 100) rageMult = 1.25;
+    else if ((player.rage || 0) >= 50) rageMult = 1.10;
+  }
+  // Steam-Buff (Magier Element-Fusion): +50%
+  const steamMult = (player.steamBuff || 0) > 0 ? 1.5 : 1;
+  // Muse-Buff (Lyra): +12% wenn min. 1 charmed/confused
+  const museMult = (player.museActive || 0) > 0 ? 1.12 : 1;
+  // Boss-Spotlight-Buff
+  const spotlightMult = (player.spotlightBuff || 0) > 0 ? 1.30 : 1;
+  return Math.round((player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5)) * bearMult * rageMult * steamMult * museMult * spotlightMult);
 }
 
 function currentWeapon() {
@@ -770,6 +791,33 @@ function spawnWorldBoss(bossDef) {
   skillFlashes.push({ color: bossDef.appearance.head || "#fff", life: 0.4, maxLife: 0.4 });
 }
 
+function triggerClassSpotlight(boss) {
+  const cls = player.classId;
+  player.spotlightBuff = 4;
+  if (cls === "warrior") {
+    floatText(player.x, player.y - 60, "✦ EISENWUT! +30% DMG ✦", "#f4c95d", { big: true });
+    gainRage(50);
+  } else if (cls === "shadow") {
+    floatText(player.x, player.y - 60, "✦ JAEGER! Marken ewig 4s ✦", "#35d0a4", { big: true });
+    player.markEternalTimer = 4;
+  } else if (cls === "runemage") {
+    floatText(player.x, player.y - 60, "✦ ELEMENTAR-FLUSS! ✦", "#67e8f9", { big: true });
+    gainFireCharge(); gainFireCharge(); gainFireCharge();
+    gainFrostCharge(); gainFrostCharge(); gainFrostCharge();
+  } else if (cls === "druid") {
+    floatText(player.x, player.y - 60, "✦ NATURGEWALT! ✦", "#a3e635", { big: true });
+    if (!(player.bearForm > 0)) bearForm(); // Boss-Phase startet Baerform
+    else player.bearForm = Math.max(player.bearForm, 6);
+  } else if (cls === "charmer") {
+    // Boss kurz charm-vulnerable (2s)
+    applyStatus(boss, "charmed", 2);
+    boss.aggroed = false;
+    anim.applyCharmAura(boss);
+    floatText(player.x, player.y - 60, "✦ VERZAUBERT! Boss 2s charm! ✦", "#ec4899", { big: true });
+    player.charmStacks = 5;
+  }
+}
+
 function updateWorldBoss(mob, dt) {
   if (!mob.bossDef) return;
   const def = mob.bossDef;
@@ -781,6 +829,8 @@ function updateWorldBoss(mob, dt) {
     skillFlashes.push({ color: def.appearance.head, life: 0.3, maxLife: 0.3 });
     showToast(`${def.name} — Phase ${newPhase}!`);
     sfx.bossPhase();
+    // Klassen-Spotlight: jeder Phase-Wechsel triggert klassen-spezifischen Buff (4s)
+    triggerClassSpotlight(mob);
     // Split-Trigger bei Phase-2 für Mutter Sphagne
     if (def.abilities.splitSelf && mob.bossPhase === 2 && !mob.hasSplit) {
       mob.hasSplit = true;
@@ -3407,6 +3457,8 @@ function drawSplashScreen() {
 }
 
 function drawComboHud() {
+  drawComboMeterBar();
+  drawClassResource();
   if (comboCount < 2) return;
   const x = canvas.clientWidth / 2;
   const y = 60;
@@ -3430,6 +3482,109 @@ function drawComboHud() {
   ctx.fillRect(x - bw / 2, y + 20, bw, 4);
   ctx.fillStyle = color;
   ctx.fillRect(x - bw / 2, y + 20, bw * Math.max(0, pct), 4);
+  ctx.restore();
+}
+
+function drawComboMeterBar() {
+  const meter = player.comboMeter || 0;
+  if (meter <= 0) return;
+  const x = canvas.clientWidth / 2;
+  const w = 220;
+  const y = canvas.clientHeight - 120;
+  const ready = meter >= 100;
+  ctx.save();
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = ready ? "#fde047" : "#94a3b8";
+  ctx.fillText(ready ? "✦ FLOW BEREIT ✦" : `Flow ${Math.floor(meter)}%`, x, y - 4);
+  ctx.fillStyle = "rgba(10,14,18,0.7)";
+  ctx.fillRect(x - w / 2, y, w, 6);
+  const grad = ctx.createLinearGradient(x - w / 2, y, x + w / 2, y);
+  grad.addColorStop(0, "#a78bfa");
+  grad.addColorStop(0.5, "#ec4899");
+  grad.addColorStop(1, "#fde047");
+  ctx.fillStyle = ready ? "#fde047" : grad;
+  ctx.fillRect(x - w / 2, y, w * (meter / 100), 6);
+  if (ready) {
+    ctx.shadowColor = "#fde047";
+    ctx.shadowBlur = 12;
+    ctx.strokeStyle = "#fde047";
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(x - w / 2, y, w, 6);
+  }
+  ctx.restore();
+}
+
+function drawClassResource() {
+  const cls = player.classId;
+  const x = canvas.clientWidth / 2;
+  const w = 220;
+  const y = canvas.clientHeight - 100;
+  ctx.save();
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "center";
+
+  if (cls === "warrior") {
+    const r = player.rage || 0;
+    ctx.fillStyle = "#ef4444";
+    ctx.fillText(`Wut ${Math.floor(r)}/100 ${r >= 100 ? "✦ MAX ✦" : r >= 50 ? "✦" : ""}`, x, y - 4);
+    ctx.fillStyle = "rgba(10,14,18,0.7)";
+    ctx.fillRect(x - w / 2, y, w, 5);
+    ctx.fillStyle = r >= 100 ? "#fbbf24" : r >= 50 ? "#fb923c" : "#ef4444";
+    ctx.fillRect(x - w / 2, y, w * (r / 100), 5);
+  } else if (cls === "shadow") {
+    const n = player.markCount || 0;
+    ctx.fillStyle = "#35d0a4";
+    ctx.fillText(`Marken aktiv: ${n}`, x, y - 4);
+    // Icon-Reihe
+    for (let i = 0; i < Math.min(8, n); i += 1) {
+      ctx.fillStyle = "#35d0a4";
+      ctx.fillRect(x - 50 + i * 14, y, 10, 6);
+    }
+  } else if (cls === "runemage") {
+    const fc = player.fireCharges || 0;
+    const ic = player.frostCharges || 0;
+    ctx.fillStyle = "#ff7a3d";
+    ctx.fillText(`🔥 ${fc}/3   ❄ ${ic}/3   ${(player.steamBuff || 0) > 0 ? "✦ DAMPF ✦" : ""}`, x, y);
+    // Charge-Icons
+    for (let i = 0; i < 3; i += 1) {
+      ctx.fillStyle = i < fc ? "#ff7a3d" : "rgba(255,122,61,0.18)";
+      ctx.fillRect(x - 60 + i * 14, y + 8, 10, 6);
+      ctx.fillStyle = i < ic ? "#9ee7ff" : "rgba(158,231,255,0.18)";
+      ctx.fillRect(x + 24 + i * 14, y + 8, 10, 6);
+    }
+  } else if (cls === "druid") {
+    const fe = player.formEnergy || 0;
+    ctx.fillStyle = "#65a30d";
+    const inBear = (player.bearForm || 0) > 0;
+    const inWolf = (player.wolfForm || 0) > 0;
+    ctx.fillText(inWolf ? `🐺 Wolfsform ${player.wolfForm.toFixed(1)}s` : inBear ? `🐻 Baerform ${player.bearForm.toFixed(1)}s` : `Wildkraft ${Math.floor(fe)}/100`, x, y - 4);
+    ctx.fillStyle = "rgba(10,14,18,0.7)";
+    ctx.fillRect(x - w / 2, y, w, 5);
+    ctx.fillStyle = inBear ? "#92400e" : inWolf ? "#5c5c8a" : "#a3e635";
+    const pct = inBear ? (player.bearForm / 8) : inWolf ? (player.wolfForm / 5) : (fe / 100);
+    ctx.fillRect(x - w / 2, y, w * pct, 5);
+  } else if (cls === "charmer") {
+    const s = player.charmStacks || 0;
+    const muse = (player.museActive || 0) > 0;
+    ctx.fillStyle = muse ? "#fde047" : "#ec4899";
+    ctx.fillText(`Charme ${s}/5${muse ? "  ✦ MUSE ✦" : ""}`, x, y - 4);
+    // 5 Herz-Icons
+    for (let i = 0; i < 5; i += 1) {
+      ctx.fillStyle = i < s ? "#ec4899" : "rgba(236, 72, 153, 0.18)";
+      const cx = x - 40 + i * 20;
+      const cy = y + 4;
+      const sz = 3;
+      ctx.fillRect(cx - sz, cy - sz, sz, sz);
+      ctx.fillRect(cx, cy - sz, sz, sz);
+      ctx.fillRect(cx - sz * 2, cy, sz, sz);
+      ctx.fillRect(cx - sz, cy, sz, sz);
+      ctx.fillRect(cx, cy, sz, sz);
+      ctx.fillRect(cx + sz, cy, sz, sz);
+      ctx.fillRect(cx - sz, cy + sz, sz, sz);
+      ctx.fillRect(cx, cy + sz, sz, sz);
+    }
+  }
   ctx.restore();
 }
 
@@ -3513,6 +3668,83 @@ function drawBossCharges() {
   }
 }
 
+function addCombo(amount = 8) {
+  player.comboMeter = Math.min(100, (player.comboMeter || 0) + amount);
+  player.comboTimer = 3.5; // hat 3.5s Zeit, sonst Decay
+}
+
+function updateClassResources(dt) {
+  // Combo-Meter Decay nach Idle
+  if ((player.comboTimer || 0) > 0) {
+    player.comboTimer -= dt;
+  } else {
+    player.comboMeter = Math.max(0, (player.comboMeter || 0) - 18 * dt);
+  }
+  // Globale Buff-Decays
+  if ((player.steamBuff || 0) > 0) player.steamBuff -= dt;
+  if ((player.spotlightBuff || 0) > 0) player.spotlightBuff -= dt;
+  if ((player.markEternalTimer || 0) > 0) player.markEternalTimer -= dt;
+  if ((player.wolfForm || 0) > 0) player.wolfForm -= dt;
+  if ((player.spinAnim || 0) > 0) player.spinAnim = Math.max(0, player.spinAnim - dt);
+  // Klassen-spezifisch
+  const cls = player.classId;
+  if (cls === "warrior") {
+    // Rage faellt langsam ab wenn nicht im Kampf
+    if ((player.rage || 0) > 0 && !mobs.some((m) => Math.hypot(m.x - player.x, m.y - player.y) < 220)) {
+      player.rage = Math.max(0, player.rage - 6 * dt);
+    }
+  } else if (cls === "shadow") {
+    // Mark-Count live aus mobs
+    player.markCount = mobs.reduce((n, m) => n + (statusTime(m, "marked") > 0 ? 1 : 0), 0);
+  } else if (cls === "runemage") {
+    // Charges decay nach 12s ungenutzt
+    player.fireChargesDecay = Math.max(0, (player.fireChargesDecay || 0) - dt);
+    player.frostChargesDecay = Math.max(0, (player.frostChargesDecay || 0) - dt);
+    if (player.fireChargesDecay <= 0) player.fireCharges = 0;
+    if (player.frostChargesDecay <= 0) player.frostCharges = 0;
+  } else if (cls === "druid") {
+    // Form-Energy laedt nur ausserhalb Baer-Form
+    if (!(player.bearForm > 0)) {
+      player.formEnergy = Math.min(100, (player.formEnergy || 0) + 12 * dt);
+    } else {
+      player.formEnergy = Math.max(0, (player.formEnergy || 0) - 14 * dt);
+    }
+  } else if (cls === "charmer") {
+    // Charme-Stacks Decay
+    if ((player.charmStacks || 0) > 0) {
+      player.charmStacksDecayTimer = Math.max(0, (player.charmStacksDecayTimer || 0) - dt);
+      if (player.charmStacksDecayTimer <= 0) {
+        player.charmStacks = Math.max(0, player.charmStacks - 1);
+        player.charmStacksDecayTimer = 8;
+      }
+    }
+    // Muse: wenn min. 1 charmed/confused → Buff
+    const charmedMobs = mobs.reduce((n, m) => n + ((statusTime(m, "charmed") > 0 || statusTime(m, "confused") > 0) ? 1 : 0), 0);
+    if (charmedMobs > 0) {
+      player.museActive = Math.max(player.museActive || 0, 0.5); // refresht jeden tick
+      player.hp = Math.min(player.maxHp, player.hp + 1 * dt);
+    } else {
+      player.museActive = Math.max(0, (player.museActive || 0) - dt);
+    }
+  }
+}
+
+function gainRage(amount) {
+  if (player.classId !== "warrior") return;
+  player.rage = Math.min(100, (player.rage || 0) + amount);
+}
+
+function gainFireCharge() {
+  if (player.classId !== "runemage") return;
+  player.fireCharges = Math.min(3, (player.fireCharges || 0) + 1);
+  player.fireChargesDecay = 12;
+}
+function gainFrostCharge() {
+  if (player.classId !== "runemage") return;
+  player.frostCharges = Math.min(3, (player.frostCharges || 0) + 1);
+  player.frostChargesDecay = 12;
+}
+
 function updateSkillFlashes(dt) {
   for (let i = skillFlashes.length - 1; i >= 0; i -= 1) {
     skillFlashes[i].life -= dt;
@@ -3544,6 +3776,7 @@ function useAbility(abilityId) {
   };
   handlers[abilityId]?.();
   setAbilityCooldown(abilityId);
+  addCombo(ability.ultimate ? 25 : 12);
   skillFlashes.push({ color: ability.color || "#f4c95d", life: 0.18, maxLife: 0.18 });
   if (ability.ultimate) sfx.ulti(); else sfx.skill();
   const btn = abilityId === primaryAbilityId() ? ui.skillPrimary
@@ -3734,9 +3967,10 @@ function poisonMark() {
   const angle = aimAngle();
   let marked = 0;
   spawnPoisonSpit(angle);
+  const markDur = (player.markEternalTimer || 0) > 0 ? 60 : 7;
   for (const mob of [...mobs]) {
     if (!isInCone(mob, angle, 260, 105)) continue;
-    applyStatus(mob, "marked", 7);
+    applyStatus(mob, "marked", markDur);
     applyStatus(mob, "poisoned", poisonDur);
     mob.poisonDotMult = dotMult; // tickStatuses liest das
     damageMob(mob, Math.floor(attackPower() * 0.75), { tag: "mark" });
@@ -3799,6 +4033,7 @@ function fireOrb() {
   }
   // Persistenter Lava-Pool 2s am Einschlag
   anim.spawnLavaPool(impact.x, impact.y, radius * 0.55, 2);
+  gainFireCharge();
   // Schockwelle-Ringe
   anim.spawnRoar(impact.x, impact.y, "#ff7a3d");
   burst(impact.x, impact.y, "#e86f36", 40);
@@ -4439,6 +4674,14 @@ function frostCircle() {
   crescentWaves.push({ x: impact.x, y: impact.y, angle: 0, range: 142, radius: 142, life: 0.5, maxLife: 0.5, color: "#9ee7ff", radial: true });
   // Persistenter Eis-Ring (Frost-Hexagon bleibt 6s sichtbar)
   anim.spawnFrostRing(impact.x, impact.y, 142, slowDur + 1);
+  gainFrostCharge();
+  // Element-Fusion: wenn beide 3 Charges → "Dampf"-Bonus (next Skill +50% DMG, gleicher Effekt wie combo)
+  if (player.fireCharges >= 3 && player.frostCharges >= 3) {
+    player.steamBuff = 6;
+    player.fireCharges = 0;
+    player.frostCharges = 0;
+    floatText(player.x, player.y - 60, "✦ DAMPF! +50% DMG ✦", "#67e8f9", { big: true });
+  }
   // Schneeflocken die hineinfallen
   for (let i = 0; i < 16; i += 1) {
     const a = Math.random() * Math.PI * 2;
@@ -4565,6 +4808,18 @@ function damageMob(mob, amount, options = {}) {
   const combo = options.tag === "combo" || options.tag === "detonate";
   const color = combo ? classDef.accent : options.tag === "frost" ? "#9ee7ff" : options.tag === "mark" ? "#35d0a4" : classDef.color;
   floatText(mob.x, mob.y - 28 - mob.r * 0.35, combo ? `KOMBO -${amount}` : `-${amount}`, color);
+  // Synergie-FloatText (gross, eye-catching)
+  if (options.tag === "detonate") {
+    floatText(mob.x, mob.y - 72, "✦ DETONATE ✦", "#ff9540", { big: true });
+    addCombo(20);
+  } else if (options.tag === "combo") {
+    floatText(mob.x, mob.y - 72, "✦ KOMBO ✦", "#fde047", { big: true });
+    addCombo(15);
+  } else if (options.tag === "crit") {
+    addCombo(10);
+  } else if (options.tag === "stun" || options.tag === "frost") {
+    addCombo(6);
+  }
   mob.hitTimer = 0.14;
   if (multiplayerReady && mob.serverId) {
     pushHit({ kind: "mob", serverId: mob.serverId }, amount);
@@ -5338,9 +5593,14 @@ function removeInventory(id, count) {
   player.inventory = player.inventory.filter((entry) => entry.count > 0);
 }
 
-function floatText(x, y, text, color) {
-  const isImportant = text && (text.includes("CRIT") || text.includes("KOMBO"));
-  floatingText.push({ x, y, text, color, life: isImportant ? 1.0 : 0.75, maxLife: isImportant ? 1.0 : 0.75 });
+function floatText(x, y, text, color, opts = {}) {
+  const isImportant = (text && (text.includes("CRIT") || text.includes("KOMBO"))) || opts.big;
+  floatingText.push({
+    x, y, text, color,
+    life: isImportant ? 1.2 : 0.75,
+    maxLife: isImportant ? 1.2 : 0.75,
+    big: !!opts.big,
+  });
 }
 
 function burst(x, y, color, amount) {
@@ -5630,7 +5890,9 @@ function update(dt) {
   if (keys.has("d") || keys.has("arrowright")) move.x += 1;
   const len = Math.hypot(move.x, move.y) || 1;
   const frostSlow = (player.frostSlowTimer || 0) > 0 ? 0.55 : 1;
-  const speedMult = (1 + talentEffect("speedBonus")) * frostSlow;
+  const wolfBoost = (player.wolfForm || 0) > 0 ? 1.6 : 1;
+  const museSpeed = (player.museActive || 0) > 0 ? 1.08 : 1;
+  const speedMult = (1 + talentEffect("speedBonus")) * frostSlow * wolfBoost * museSpeed;
   player.x = clamp(player.x + (move.x / len) * player.speed * speedMult * dt, player.r, world.w - player.r);
   player.y = clamp(player.y + (move.y / len) * player.speed * speedMult * dt, player.r, world.h - player.r);
   player.attackCooldown = Math.max(0, player.attackCooldown - dt);
@@ -5803,6 +6065,7 @@ function update(dt) {
       const def = totalDefense();
       const mitigatedDamage = Math.max(3, Math.ceil(mob.damage * 0.65 + mob.damage * 0.35 - def));
       player.hp -= mitigatedDamage;
+      gainRage(8); // Krieger laedt Rage durch eingesteckte Treffer
       player.invuln = 0.5;
       // Player flash bei Treffer
       player.hitFlash = 0.2;
@@ -5847,6 +6110,7 @@ function update(dt) {
   updateParticles(dt);
   updateProjectiles(dt);
   updateSkillFlashes(dt);
+  updateClassResources(dt);
   updateGroundEffects(dt);
   updateLavaPools(dt);
   updatePvpBot(dt);
@@ -5879,6 +6143,13 @@ function update(dt) {
   if (player.bearForm > 0) {
     player.bearForm -= dt;
     if (player.bearForm <= 0) {
+      // Wolfsform-Chain wenn Bear-Mastery >= 3
+      const bm = mastery("bearForm");
+      if (bm >= 3 && player.classId === "druid") {
+        player.wolfForm = 3 + (bm - 2); // 3s base, +1s pro Punkt ueber 3
+        floatText(player.x, player.y - 60, "🐺 WOLFSFORM!", "#a3e635", { big: true });
+        anim.spawnRoar(player.x, player.y, "#5c5c8a");
+      }
       // Boost wieder weg
       player.maxHp -= player.bearFormMaxHpBoost || 0;
       player.hp = Math.min(player.hp, player.maxHp);
@@ -7841,8 +8112,8 @@ function drawFloatingText() {
     const popPhase = Math.min(1, (max - t) / 0.15);
     const scale = 0.6 + popPhase * 0.7;
     const wobble = Math.sin((max - t) * 18) * 2 * pct;
-    const isImportant = text.text && (text.text.includes("CRIT") || text.text.includes("KOMBO"));
-    const baseSize = isImportant ? 22 : 16;
+    const isImportant = text.big || (text.text && (text.text.includes("CRIT") || text.text.includes("KOMBO")));
+    const baseSize = text.big ? 28 : isImportant ? 22 : 16;
     ctx.font = `bold ${baseSize * scale}px sans-serif`;
     ctx.globalAlpha = clamp(pct * 1.6, 0, 1);
     if (isImportant) {
