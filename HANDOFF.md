@@ -103,40 +103,88 @@ Aktuell ist alles im `localStorage` des Clients:
 | Courier-Quest-State | localStorage | `characters/{charId}/courierState` |
 | Trainer-Cooldown | localStorage | `characters/{charId}/trainerLastReset` |
 
-**Vorgeschlagenes Char-Schema:**
+**Vorgeschlagenes Char-Schema (aktualisiert mit allen neuen Feldern):**
 ```json
 {
   "characters": {
     "{charId}": {
-      "name": "string (2-16 chars)",
+      "name": "string (2-16 chars, unique pro user)",
       "classId": "warrior | shadow | runemage",
-      "level": "number",
+      "level": "number (1-99)",
       "xp": "number",
-      "nextXp": "number",
-      "gold": "number",
+      "nextXp": "number (= 50 * 1.35^(level-1))",
+      "gold": "number (>= 0)",
       "hp": "number",
       "maxHp": "number",
       "baseAttack": "number",
       "attackBonus": "number",
       "armorLevel": "number",
-      "inventory": [{ "id": "string", "count": "number", "upgrade": "number", "affixes": { } }],
-      "weapon": "string",
-      "weaponIndex": "number",
+      "inventory": [
+        {
+          "id": "string (item-id aus items.js)",
+          "count": "number (1-128, stacked)",
+          "upgrade": "number (0-9, Schmied-Upgrade-Level)",
+          "affixes": {
+            "crit": "number (0..0.25)",
+            "lifesteal": "number (0..0.15)",
+            "cdr": "number (0..0.20)"
+          },
+          "justMerged": "number (timestamp, optional, expires nach 5s)"
+        }
+      ],
+      "weapon": "string (id of equipped weapon)",
+      "weaponIndex": "number (inventory index, -1 wenn keiner)",
       "armorIndex": "number",
-      "talents": { },
-      "talentPoints": "number",
-      "pets": { "{bossId}": { "unlockedAt": "number" } },
-      "activePet": "string | null",
-      "courierState": { "questId", "progress", "claimed", "resetAt" },
-      "trainerLastReset": "number",
-      "mobsKilled": "number",
-      "stonesKilled": "number",
-      "createdAt": "number",
-      "lastPlayedAt": "number"
+      "talents": {
+        "{nodeId}": "number (0-5 Punkte pro Knoten)"
+      },
+      "talentPoints": "number (uninvestierte Punkte)",
+      "pets": {
+        "{bossId}": { "unlockedAt": "number (timestamp)" }
+      },
+      "activePet": "string | null (boss-id des aktiven Pets)",
+      "courierState": {
+        "questId": "string",
+        "progress": "number",
+        "startedLevel": "number",
+        "claimed": "boolean",
+        "resetAt": "number (timestamp, +30min)"
+      },
+      "trainerLastReset": "number (timestamp)",
+      "mobsKilled": "number (Total)",
+      "stonesKilled": "number (Total)",
+      "createdAt": "number (timestamp)",
+      "lastPlayedAt": "number (timestamp)"
     }
   }
 }
 ```
+
+### Achievements/Stats (aus localStorage, evtl. später migrieren)
+```json
+{
+  "tutorialSeen": "boolean",
+  "soundEnabled": "boolean (default true)"
+}
+```
+
+### Boss-Datendateien (Code, kein DB-Sync nötig)
+- `src/data/bosses/frost_jarl.js` — Jarl Borealis (Frost-Öden)
+- `src/data/bosses/pyromant_asaru.js` — Pyromant Asaru (Glut-Schmiede)
+- `src/data/bosses/mother_sphagne.js` — Mutter Sphagne (Schattensumpf)
+- `src/data/bosses/aetherius.js` — Aetherius (Himmelsturm)
+
+Pet-Definitionen sind in den Boss-Files unter `boss.pet` eingebettet. Wenn ihr cross-device Pet-Persistence wollt, reicht `pets[bossId] = { unlockedAt }` — die Pet-Stats kommen aus dem Boss-File zur Render-Zeit.
+
+### Items.js — Item-Pool
+Komplette Item-Liste mit Rarity/Affixen ist Client-Side ([src/data/items.js](src/data/items.js)). Spezial-Steine pro Welt:
+- `frost_core` (Frost-Öden) — -20% Bruchchance
+- `ember_spark` (Glut-Schmiede) — -18% Bruchchance
+- `shadow_essence` (Schattensumpf) — -16% Bruchchance
+- `sky_shard` (Himmelsturm) — -22% Bruchchance
+
+### Drop-Tables — pro Welt × Mob-Rank
+[src/data/drops.js](src/data/drops.js) hat die volle Loot-Matrix. Falls ihr serverseitiges Loot-Audit braucht, müsst ihr das spiegeln.
 
 **Validierungs-Constraints, die wir brauchen:**
 - `name` darf nicht von anderem Char belegt sein (uniqueness im Roster)

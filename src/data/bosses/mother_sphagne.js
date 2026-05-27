@@ -1,0 +1,86 @@
+// Mutter Sphagne — Sumpf-Hexe die sich teilen kann.
+// Bei 50% HP splittet sie in 2 kleinere Versionen. Beide droppen Loot beim Tod.
+
+export const motherSphagne = {
+  id: "mother_sphagne",
+  worldId: "shadowfen",
+  name: "Mutter Sphagne",
+  title: "Hexe der Sumpf-Tiefen",
+  rank: "boss",
+  baseStats: {
+    hp: 3200,
+    damage: 88,
+    speed: 86,
+    r: 56,
+    scale: 1.6,
+    xp: 600,
+  },
+  appearance: {
+    head: "#bbf7a0",
+    body: "#1d3018",
+    arms: "#4d7c0f",
+    legs: "#0e1c08",
+    accent: "hood",
+    accentColor: "#365314",
+    aura: "rgba(132, 204, 22, 0.32)",
+  },
+  abilities: {
+    poisonCloud: {
+      phase: 1,
+      id: "poisonCloud",
+      cooldown: 6,
+      damage: 0.55,
+      radius: 180,
+      duration: 4,
+      telegraphDuration: 1.0,
+      slow: 0.55, // verlangsamt um 45%
+      color: "#84a665",
+      hint: "Gift-Wolke (1s Telegraph) — verlangsamt + DoT 4s",
+      counter: "Vor Cast aus dem Kreis rennen",
+    },
+    splitSelf: {
+      phase: 2,
+      id: "splitSelf",
+      cooldown: 999, // einmalig bei 50%
+      hint: "Splittet bei 50% HP in 2 Mini-Versionen (50% HP, 60% DMG)",
+      counter: "Eine zuerst töten — sonst doppelter Schaden auf dich",
+    },
+    sporeBurst: {
+      phase: 3,
+      id: "sporeBurst",
+      cooldown: 5,
+      damage: 0.75,
+      radius: 220,
+      telegraphDuration: 0.6,
+      color: "#bbf7a0",
+      hint: "Spore-Burst — Druckwelle aus jeder Tochter",
+      counter: "Distanz halten, nicht zwischen die Töchter laufen",
+    },
+  },
+  drops: {
+    guaranteed: ["shadow_essence"],
+    rolls: [
+      { id: "storm_saber", chance: 0.40 },
+      { id: "pugna_cleaver", chance: 0.20 },
+      { id: "fullmoon_sickle", chance: 0.06 },
+      { id: "steel_armor", chance: 0.28 },
+      { id: "dragon_plate", chance: 0.10 },
+    ],
+    goldRange: [200, 350],
+  },
+  introToast: "Mutter Sphagne erwacht aus dem Schlamm...",
+  defeatToast: "Sphagne kollabiert. Ein Spore-Faun begleitet dich.",
+  pet: {
+    id: "sphagne_pet",
+    name: "Spore-Faun",
+    scale: 0.5,
+    hp: 75,
+    damage: 0.20,
+    attackRange: 200,
+    attackCooldown: 1.4,
+    speed: 270,
+    color: "#84a665",
+    glow: "rgba(132, 204, 22, 0.55)",
+    style: "spore",
+  },
+};

@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=shadow-2" />
+    <link rel="stylesheet" href="styles.css?v=gold-pack-1" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -123,6 +123,7 @@
           <button id="toggleSmith" type="button" data-overlay="smithOverlay"><kbd>F</kbd><span>Schmied</span></button>
           <button id="toggleTalents" type="button" data-overlay="talentsOverlay"><kbd>T</kbd><span>Talente <em id="talentPts" class="tp-badge">0</em></span></button>
           <button id="switchCharBtn" type="button" title="Charakter wechseln"><kbd>X</kbd><span>Charakter</span></button>
+          <button id="toggleCodex" type="button" data-overlay="codexOverlay"><kbd>B</kbd><span>Codex</span></button>
         </div>
       </section>
 
@@ -191,7 +192,12 @@
         <header class="overlay-head">
           <h2>Charakter <span class="head-hint">& Inventar</span></h2>
           <div class="overlay-head-actions">
-            <button id="sortInventory" type="button">Sortieren</button>
+            <select id="sortInventory" title="Sortieren">
+              <option value="power">Sortieren: Wert ↓</option>
+              <option value="rarity">Rarität ↓</option>
+              <option value="type">Typ</option>
+              <option value="name">Name A→Z</option>
+            </select>
             <button class="overlay-close" data-close="invOverlay" type="button" aria-label="Schliessen">×</button>
           </div>
         </header>
@@ -289,6 +295,15 @@
         </div>
       </aside>
 
+      <aside id="codexOverlay" class="overlay-panel overlay-xwide hidden" aria-label="Codex">
+        <header class="overlay-head">
+          <h2>Codex <span class="head-hint">Bestiarium & Drops</span></h2>
+          <button class="overlay-close" data-close="codexOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <div class="codex-tabs" id="codexTabs" role="group"></div>
+        <div id="codexContent" class="codex-content"></div>
+      </aside>
+
       <aside id="talentsOverlay" class="overlay-panel hidden" aria-label="Talente">
         <header class="overlay-head">
           <h2>Talente <span class="head-tag"><em id="talentPtsInline">0</em> Punkte</span></h2>
@@ -341,47 +356,58 @@
           <h2>Schmied <span id="smithNear" class="head-tag">Nicht in Reichweite</span></h2>
           <button class="overlay-close" data-close="smithOverlay" type="button" aria-label="Schliessen">×</button>
         </header>
+        <div class="smith-mode-tabs" role="group" aria-label="Schmiede-Modus">
+          <button type="button" data-smith-mode="weapon" class="active">⚔ Waffe verbessern</button>
+          <button type="button" data-smith-mode="armor">🛡 Ruestung verbessern</button>
+          <button type="button" data-smith-mode="merge">✦ Verschmelzen</button>
+        </div>
         <div class="smith-with-inv">
           <section class="smith-anvil">
-            <small>Item legen</small>
-            <div id="smithSlot" class="smith-item-slot empty">
-              <span class="smith-slot-hint">Klick rechts im Inventar →</span>
+            <!-- Upgrade-Modus (weapon/armor) -->
+            <div id="smithUpgradeBlock" class="smith-block">
+              <small id="smithModeLabel">Waffe legen</small>
+              <div id="smithSlot" class="smith-item-slot empty">
+                <span class="smith-slot-hint">Klick im Inventar →</span>
+              </div>
+              <div id="smithCostList" class="smith-cost">
+                <strong>Kein Item ausgewaehlt</strong>
+              </div>
+              <div id="smithRiskBlock" class="smith-risk hidden">
+                <span>Bruch-Risiko</span>
+                <div class="smith-risk-bar"><span id="smithRiskFill"></span></div>
+                <strong id="smithRiskText">0%</strong>
+              </div>
+              <div class="smith-actions">
+                <button id="upgradeWeapon" type="button" disabled>Aufwerten +1</button>
+                <button id="smithReturn" type="button">Item zurueck</button>
+              </div>
+              <div class="smith-help">
+                <strong>Hinweise</strong>
+                <ul>
+                  <li>Bis +3: kein Bruch-Risiko</li>
+                  <li>+4..+6: 12-25% pro Versuch</li>
+                  <li>+7..+9: 50-80% — Kopie als Backup mitnehmen</li>
+                  <li>Spezial-Steine im Inventar reduzieren das Risiko</li>
+                </ul>
+              </div>
             </div>
-            <div id="smithCostList" class="smith-cost">
-              <strong>Kein Item ausgewaehlt</strong>
-            </div>
-            <div id="smithRiskBlock" class="smith-risk hidden">
-              <span>Bruch-Risiko</span>
-              <div class="smith-risk-bar"><span id="smithRiskFill"></span></div>
-              <strong id="smithRiskText">0%</strong>
-            </div>
-            <div class="smith-actions">
-              <button id="upgradeWeapon" type="button" disabled>Aufwerten +1</button>
-              <button id="smithReturn" type="button">Item zurueck</button>
-            </div>
-            <div class="smith-help">
-              <strong>Hinweise</strong>
-              <ul>
-                <li>Bis +3: kein Bruch-Risiko</li>
-                <li>+4..+6: 12-25% pro Versuch</li>
-                <li>+7..+9: 50-80% — eine Kopie als Backup mitnehmen</li>
-                <li>Bei Bruch ist das Item weg, Materialien verbraucht</li>
-              </ul>
-            </div>
-            <div class="smith-merge">
-              <strong>Stapel verschmelzen</strong>
-              <small>3 gleiche Common-Items → 1 Tier höher mit Affixen.</small>
-              <button id="mergeStacks" type="button">Verschmelzen</button>
+            <!-- Merge-Modus -->
+            <div id="smithMergeBlock" class="smith-block hidden">
+              <strong>Verschmelzen</strong>
+              <small>Klick auf ein Item im Inventar — wird automatisch in den nächsten Slot gelegt. 3 gleiche Items derselben Stufe → eine Stufe höher (Common→Rare→Epic→Legendary). Affixe werden neu gewürfelt.</small>
+              <div class="merge-slots">
+                <div class="merge-slot empty" id="mergeSlot0" data-merge-slot="0"><span class="ms-num">1</span></div>
+                <div class="merge-slot empty" id="mergeSlot1" data-merge-slot="1"><span class="ms-num">2</span></div>
+                <div class="merge-slot empty" id="mergeSlot2" data-merge-slot="2"><span class="ms-num">3</span></div>
+              </div>
+              <div id="mergePreview" class="merge-preview hidden"></div>
+              <div class="merge-buttons">
+                <button id="mergeClear" type="button">Leeren</button>
+                <button id="mergeConfirm" type="button" disabled>Verschmelzen</button>
+              </div>
             </div>
           </section>
           <section class="smith-inv">
-            <div class="inv-filters" role="group" aria-label="Filter">
-              <button type="button" data-inv-filter="all" class="active">Alle</button>
-              <button type="button" data-inv-filter="weapon">Waffen</button>
-              <button type="button" data-inv-filter="armor">Ruestung</button>
-              <button type="button" data-inv-filter="potion">Traenke</button>
-              <button type="button" data-inv-filter="material">Material</button>
-            </div>
             <div class="inv-scroll">
               <div id="smithInventory" class="inventory"></div>
             </div>
@@ -390,7 +416,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=shadow-2"></script>
-    <script type="module" src="src/main.js?v=shadow-2"></script>
+    <script type="module" src="firebase-config.js?v=gold-pack-1"></script>
+    <script type="module" src="src/main.js?v=gold-pack-1"></script>
   </body>
 </html>

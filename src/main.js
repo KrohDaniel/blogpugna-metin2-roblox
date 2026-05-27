@@ -1,11 +1,13 @@
 import { DEFAULT_CLASS_ID, classDefs, getClassDef } from "./data/classes.js";
 import { abilityDefs, getAbilityDef } from "./data/abilities.js";
 import { MAX_STACK, item, itemDefs, typeBadges, rarityLabels, affixCatalog, rollAffixes } from "./data/items.js";
-import { getTalentTree } from "./data/talents.js";
+import { getTalentTree, abilityMasteryLevel } from "./data/talents.js";
 import { worldDefs, getWorldDef, PORTAL_EDGE_THRESHOLD, getStoneStyle, getPortalColor } from "./data/worlds.js";
 import { rollMobSkin } from "./data/mobs.js";
 import { bossForWorld, petForBossId, bosses } from "./data/bosses/index.js";
-import { rollDrops } from "./data/drops.js";
+import { rollDrops, dropTables, getDropTable } from "./data/drops.js";
+import { mobPools } from "./data/mobs.js";
+import { sfx, setSoundEnabled, isSoundEnabled } from "./audio.js";
 import { npcs, shopItems, sellPrices, dailyQuests } from "./data/npcs.js";
 
 const canvas = document.querySelector("#game");
@@ -145,6 +147,7 @@ const weaponTrails = [];
 const crescentWaves = [];
 const projectiles = [];
 const skillFlashes = [];
+const lavaPools = []; // ground DoT zones: { x, y, radius, damage, life, color, slow?, isPoison? }
 let cameraShake = 0;
 let pvpBotActive = false;
 let pvpBotScore = 0;
@@ -157,11 +160,15 @@ let currentWorldId = "meadows";
 let portalCooldown = 0;
 let preArenaWorldId = "meadows";
 let uiThrottle = 0;
+let hitStopTimer = 0;
 let traderMode = "buy";
 let trainerLastReset = 0;
 let courierState = null;
 let petRuntime = null;
-let shadowDecoy = null; // { x, y, hp, maxHp, life, maxLife }
+let shadowDecoy = null;
+let mergeSlots = [null, null, null];
+let smithMode = "weapon";
+let codexWorldId = "meadows";
 let last = performance.now();
 let mouse = { x: canvas.width / 2, y: canvas.height / 2, worldX: 0, worldY: 0 };
 let toastTimer = 0;
@@ -292,6 +299,104 @@ function itemLabel(invItem) {
   return `${def.name}${upgrade}`;
 }
 
+// Power-Score: einheitliche Vergleichszahl pro Item
+const rarityValue = { common: 1, rare: 3, epic: 7, legendary: 14 };
+function itemPowerScore(invItem) {
+  if (!invItem) return 0;
+  const def = itemDefs[invItem.id];
+  if (!def) return 0;
+  let score = (rarityValue[def.rarity] || 0) * 5;
+  if (def.type === "weapon") score += (def.attack || 0) * 2 + (invItem.upgrade || 0) * 8;
+  if (def.type === "armor") score += (def.defense || 0) * 2 + (invItem.upgrade || 0) * 10;
+  if (def.type === "potion") score += (def.heal || 0) * 0.4;
+  if (invItem.affixes) {
+    for (const v of Object.values(invItem.affixes)) score += v * 80;
+  }
+  if (def.type === "material") score = (rarityValue[def.rarity] || 0) * 4;
+  return Math.round(score);
+}
+
+function svgIconFor(invItem, color) {
+  const def = itemDefs[invItem.id];
+  if (!def) return null;
+  const c = color || def.color || "#f4f0df";
+  const dark = "#101419";
+  const shine = "#ffffff";
+  let body = "";
+  if (def.type === "weapon") {
+    if (def.style === "dagger") {
+      // Doppel-Dolch
+      body = `
+        <path d="M14 28 L26 6 L30 8 L18 30 Z" fill="${c}"/>
+        <path d="M18 30 L14 32 L12 28 L14 28 Z" fill="${dark}"/>
+        <path d="M22 28 L34 6 L38 8 L26 30 Z" fill="${c}" opacity="0.8"/>
+      `;
+    } else if (def.style === "staff") {
+      // Stab mit Orb
+      body = `
+        <rect x="22" y="14" width="4" height="32" fill="#5a3a26"/>
+        <circle cx="24" cy="12" r="8" fill="${c}"/>
+        <circle cx="22" cy="10" r="3" fill="${shine}" opacity="0.85"/>
+      `;
+    } else if (invItem.id === "fullmoon_sickle") {
+      // Sichel
+      body = `
+        <path d="M10 30 Q24 6 40 14 Q34 24 22 28 Q14 30 10 30 Z" fill="${c}"/>
+        <rect x="14" y="28" width="4" height="14" fill="${dark}"/>
+      `;
+    } else {
+      // Schwert
+      body = `
+        <path d="M22 4 L26 4 L26 30 L22 30 Z" fill="${c}"/>
+        <rect x="16" y="30" width="16" height="3" fill="${dark}"/>
+        <rect x="22" y="33" width="4" height="6" fill="#5a3a26"/>
+        <rect x="22" y="38" width="4" height="4" fill="${dark}"/>
+      `;
+    }
+  } else if (def.type === "armor") {
+    body = `
+      <path d="M10 12 L24 8 L38 12 L36 32 Q24 40 12 32 Z" fill="${c}"/>
+      <path d="M14 16 L24 13 L34 16 L32 28 Q24 33 16 28 Z" fill="${shine}" opacity="0.25"/>
+      <circle cx="24" cy="20" r="3" fill="${dark}"/>
+    `;
+  } else if (def.type === "potion") {
+    body = `
+      <rect x="20" y="6" width="8" height="6" fill="${dark}"/>
+      <path d="M16 12 L32 12 L34 36 Q24 42 14 36 Z" fill="${c}" opacity="0.5"/>
+      <path d="M16 22 L32 22 L34 36 Q24 42 14 36 Z" fill="${c}"/>
+      <circle cx="20" cy="30" r="2" fill="${shine}" opacity="0.6"/>
+    `;
+  } else if (def.type === "material") {
+    if (invItem.id === "frost_core") {
+      body = `<path d="M24 4 L34 24 L24 44 L14 24 Z" fill="${c}"/><path d="M24 12 L30 24 L24 36 L18 24 Z" fill="${shine}" opacity="0.4"/>`;
+    } else if (invItem.id === "ember_spark") {
+      body = `<path d="M24 6 Q14 18 18 32 Q24 44 30 32 Q34 18 24 6 Z" fill="${c}"/><path d="M24 18 Q20 26 22 34 Q24 38 26 34 Q28 26 24 18 Z" fill="${shine}" opacity="0.6"/>`;
+    } else if (invItem.id === "sky_shard") {
+      body = `<path d="M24 4 L30 18 L44 24 L30 30 L24 44 L18 30 L4 24 L18 18 Z" fill="${c}"/>`;
+    } else if (invItem.id === "shadow_essence") {
+      body = `<circle cx="24" cy="24" r="14" fill="${c}"/><circle cx="20" cy="20" r="5" fill="${shine}" opacity="0.45"/>`;
+    } else if (invItem.id === "pugna_core") {
+      body = `<circle cx="24" cy="24" r="14" fill="${c}"/><circle cx="24" cy="24" r="8" fill="${dark}"/><circle cx="24" cy="24" r="3" fill="${shine}"/>`;
+    } else if (invItem.id === "gem") {
+      body = `<path d="M14 16 L24 4 L34 16 L24 44 Z" fill="${c}"/><path d="M14 16 L34 16 L24 28 Z" fill="${shine}" opacity="0.45"/>`;
+    } else if (invItem.id === "metin_shard") {
+      body = `<path d="M24 6 L30 22 L44 24 L32 32 L36 44 L24 36 L12 44 L16 32 L4 24 L18 22 Z" fill="${c}"/>`;
+    } else return null;
+  } else return null;
+  return `<svg class="item-svg" viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+}
+
+function bestPowerInInventory() {
+  let best = 0;
+  for (const inv of player.inventory) {
+    if (!inv) continue;
+    const def = itemDefs[inv.id];
+    if (!def || def.type === "material" || def.type === "potion") continue;
+    best = Math.max(best, itemPowerScore(inv));
+  }
+  return best;
+}
+
 function classAbilityIds(classId = player.classId) {
   return getClassDef(classId).abilities;
 }
@@ -329,6 +434,10 @@ function applyCritAndLifesteal(amount) {
   if (rollCrit()) {
     dmg = Math.round(amount * 1.85);
     crit = true;
+    sfx.crit();
+    hitStopTimer = Math.max(hitStopTimer, 0.08);
+  } else {
+    sfx.hit();
   }
   const ls = totalLifesteal();
   if (ls > 0) {
@@ -491,18 +600,19 @@ function difficultyScale() {
 
 function mobStats(rank) {
   const s = difficultyScale();
-  // Level-Skalierung: HP/DMG steigen mit Spieler-Level
-  const lvl = player.level || 1;
-  const hpScale = 1 + (lvl - 1) * 0.22;
-  const dmgScale = 1 + (lvl - 1) * 0.14;
-  const xpScale = 1 + (lvl - 1) * 0.10;
-  // Welt-Basis-Faktor: höhere Welten haben stärkere Mobs unabhängig vom Spielerlevel
   const wDef = currentWorld();
   const worldMin = wDef.levelRange?.[0] || 1;
-  const worldBase = 1 + (worldMin - 1) * 0.18;
-  const totalHp = (base) => Math.round(base * s * hpScale * worldBase);
-  const totalDmg = (base) => Math.round(base * s * dmgScale * worldBase);
-  const totalXp = (base) => Math.round(base * xpScale * worldBase);
+  // Mob-Stats skalieren nur mit Welt-Basis-Level (NICHT mit Spielerlevel)
+  // So bleibt ein Lv2-Mob in den Wiesen schwach, auch wenn der Spieler Lv 30 ist.
+  const worldScale = 1 + (worldMin - 1) * 0.20;
+  // Anti-Bully: wenn Spieler die Welt deutlich überlevelt → weniger Schaden + weniger XP
+  const playerLvl = player.level || 1;
+  const overLevel = Math.max(0, playerLvl - worldMin);
+  const damagePenalty = Math.max(0.25, 1 - overLevel * 0.06); // -6% pro Level über Welt-Min, min 25%
+  const xpPenalty = Math.max(0.20, 1 - overLevel * 0.05);
+  const totalHp = (base) => Math.round(base * s * worldScale);
+  const totalDmg = (base) => Math.max(1, Math.round(base * s * worldScale * damagePenalty));
+  const totalXp = (base) => Math.max(1, Math.round(base * worldScale * xpPenalty));
   if (rank === "boss") {
     const name = greekBossNames[Math.floor(Math.random() * greekBossNames.length)];
     return { r: 42, hp: totalHp(680), speed: 84, damage: totalDmg(72), xp: totalXp(220), name, color: "#d946ef", scale: 1.55 };
@@ -517,10 +627,9 @@ function mobStats(rank) {
 
 function spawnStone(x, y) {
   const s = difficultyScale();
-  const lvl = player.level || 1;
   const wDef = currentWorld();
-  const worldBase = 1 + ((wDef.levelRange?.[0] || 1) - 1) * 0.18;
-  const hp = Math.round(280 * s * (1 + (lvl - 1) * 0.22) * worldBase);
+  const worldBase = 1 + ((wDef.levelRange?.[0] || 1) - 1) * 0.20;
+  const hp = Math.round(280 * s * worldBase);
   const style = getStoneStyle(currentWorldId);
   stones.push({
     x, y,
@@ -598,6 +707,7 @@ function spawnWorldBoss(bossDef) {
     isWorldBoss: true,
   });
   showToast(bossDef.introToast || `${bossDef.name} erscheint.`);
+  sfx.bossIntro();
   cameraShake = 0.5;
   skillFlashes.push({ color: bossDef.appearance.head || "#fff", life: 0.4, maxLife: 0.4 });
 }
@@ -605,7 +715,6 @@ function spawnWorldBoss(bossDef) {
 function updateWorldBoss(mob, dt) {
   if (!mob.bossDef) return;
   const def = mob.bossDef;
-  // Phasen-Update
   const pct = mob.hp / mob.maxHp;
   const newPhase = pct < 0.33 ? 3 : pct < 0.66 ? 2 : 1;
   if (newPhase !== mob.bossPhase) {
@@ -613,28 +722,333 @@ function updateWorldBoss(mob, dt) {
     cameraShake = 0.4;
     skillFlashes.push({ color: def.appearance.head, life: 0.3, maxLife: 0.3 });
     showToast(`${def.name} — Phase ${newPhase}!`);
+    sfx.bossPhase();
+    // Split-Trigger bei Phase-2 für Mutter Sphagne
+    if (def.abilities.splitSelf && mob.bossPhase === 2 && !mob.hasSplit) {
+      mob.hasSplit = true;
+      spawnSphagneDaughters(mob, def);
+      return; // mob ist jetzt eine der Töchter
+    }
   }
-  // Cooldowns ticken
   for (const k of Object.keys(mob.abilityCds || {})) {
     mob.abilityCds[k] = Math.max(0, mob.abilityCds[k] - dt);
+  }
+  // Charge-States ticken
+  if (mob.charges) {
+    for (const key of Object.keys(mob.charges)) {
+      const c = mob.charges[key];
+      c.t -= dt;
+      if (c.t <= 0) {
+        const ab = def.abilities[key];
+        if (ab) executeBossAbility(mob, def, key, ab, c);
+        delete mob.charges[key];
+      }
+    }
   }
   const dx = player.x - mob.x;
   const dy = player.y - mob.y;
   const d = Math.hypot(dx, dy) || 1;
-  // Phase 1+: Frost-Speer
-  if ((mob.abilityCds.frostSpear || 0) <= 0 && d < 480) {
-    castFrostSpear(mob, def);
-    mob.abilityCds.frostSpear = def.abilities.frostSpear.cooldown;
+  // Dispatcher pro Ability
+  for (const [key, ab] of Object.entries(def.abilities)) {
+    if (ab.phase && mob.bossPhase < ab.phase) continue;
+    if ((mob.abilityCds[key] || 0) > 0) continue;
+    if (mob.charges?.[key]) continue;
+    if (ab.id === "splitSelf") continue; // einmaliger Phasen-Trigger, kein Cooldown-Cast
+    // Distanz-Check pro Ability
+    const inRange = checkAbilityRange(ab, d);
+    if (!inRange) continue;
+    // Mit oder ohne Telegraph
+    if (ab.telegraphDuration) {
+      mob.charges = mob.charges || {};
+      mob.charges[key] = { t: ab.telegraphDuration, max: ab.telegraphDuration, x: player.x, y: player.y };
+      mob.abilityCds[key] = ab.cooldown + ab.telegraphDuration;
+      if (key === "frostNova" || key === "lavaPool" || key === "fireColumn" || key === "windBurst" || key === "thunderclap" || key === "poisonCloud" || key === "sporeBurst") {
+        showToast(`${def.name} lädt ${ab.hint?.split(" ")[0] || key}!`);
+      }
+    } else {
+      executeBossAbility(mob, def, key, ab);
+      mob.abilityCds[key] = ab.cooldown;
+    }
+    break; // pro Frame nur eine Ability auslösen
   }
-  // Phase 2+: Frost-Nova
-  if (mob.bossPhase >= 2 && (mob.abilityCds.frostNova || 0) <= 0 && d < def.abilities.frostNova.radius + 80) {
-    castFrostNova(mob, def);
-    mob.abilityCds.frostNova = def.abilities.frostNova.cooldown;
+}
+
+function checkAbilityRange(ab, d) {
+  // Projektil-Abilities haben range über Geschwindigkeit/Charge; viele AoEs haben radius
+  if (ab.id === "fireBolt" || ab.id === "frostSpear" || ab.id === "lightningChain") return d < 560;
+  if (ab.id === "windBurst") return d < (ab.radius || 260) + 40;
+  if (ab.id === "thunderclap") return d < (ab.radius || 180) + 60;
+  if (ab.id === "lavaPool" || ab.id === "poisonCloud" || ab.id === "fireColumn" || ab.id === "sporeBurst") return d < 380;
+  if (ab.id === "frostNova") return d < (ab.radius || 280) + 80;
+  if (ab.id === "summonShards") return true;
+  return d < 480;
+}
+
+function executeBossAbility(mob, def, key, ab, chargeInfo) {
+  switch (ab.id) {
+    case "frostSpear": castFrostSpear(mob, def); return;
+    case "frostNova": castFrostNova(mob, def); return;
+    case "summonShards": summonShards(mob, def); return;
+    case "fireBolt": castFireBolt(mob, def, ab); return;
+    case "lavaPool": castLavaPool(mob, def, ab, chargeInfo); return;
+    case "fireColumn": castFireColumn(mob, def, ab, chargeInfo); return;
+    case "poisonCloud": castPoisonCloud(mob, def, ab, chargeInfo); return;
+    case "sporeBurst": castSporeBurst(mob, def, ab); return;
+    case "lightningChain": castLightningChain(mob, def, ab); return;
+    case "windBurst": castWindBurst(mob, def, ab); return;
+    case "thunderclap": castThunderclap(mob, def, ab); return;
   }
-  // Phase 3+: Add-Spawn
-  if (mob.bossPhase >= 3 && (mob.abilityCds.summonShards || 0) <= 0) {
-    summonShards(mob, def);
-    mob.abilityCds.summonShards = def.abilities.summonShards.cooldown;
+}
+
+// === PYROMANT ABILITIES ===
+function castFireBolt(mob, def, ab) {
+  const a = Math.atan2(player.y - mob.y, player.x - mob.x);
+  // 3 Salven in 0.15s Abstand
+  for (let i = 0; i < 3; i += 1) {
+    setTimeout(() => {
+      if (!mobs.includes(mob)) return;
+      const angle = a + (Math.random() - 0.5) * 0.1;
+      projectiles.push({
+        x: mob.x + Math.cos(angle) * (mob.r + 8),
+        y: mob.y + Math.sin(angle) * (mob.r + 8),
+        vx: Math.cos(angle) * ab.speed,
+        vy: Math.sin(angle) * ab.speed,
+        range: 520,
+        travelled: 0,
+        color: ab.color,
+        glow: ab.glow,
+        damage: Math.round(mob.damage * ab.damage),
+        owner: "bot",
+        pierce: ab.pierce || 1,
+        hits: new Set(),
+        life: 1.8,
+      });
+    }, i * 150);
+  }
+}
+
+function castLavaPool(mob, def, ab, chargeInfo) {
+  if (!chargeInfo) return;
+  // Pool spawnen am charge-Position
+  lavaPools.push({
+    x: chargeInfo.x, y: chargeInfo.y,
+    radius: ab.radius,
+    damage: mob.damage * ab.damage, // pro Sekunde
+    life: ab.duration,
+    color: ab.color,
+  });
+  for (let i = 0; i < 30; i += 1) {
+    const ang = Math.random() * Math.PI * 2;
+    particles.push({
+      x: chargeInfo.x, y: chargeInfo.y,
+      vx: Math.cos(ang) * (140 + Math.random() * 200),
+      vy: Math.sin(ang) * (140 + Math.random() * 200),
+      life: 0.5,
+      color: i % 2 === 0 ? "#fb923c" : "#fff2a8",
+      size: 4,
+    });
+  }
+}
+
+function castFireColumn(mob, def, ab, chargeInfo) {
+  if (!chargeInfo) return;
+  crescentWaves.push({
+    x: chargeInfo.x, y: chargeInfo.y, angle: 0,
+    range: ab.radius * 1.1, radius: ab.radius * 1.1,
+    color: ab.color, life: 0.6, maxLife: 0.6,
+  });
+  for (let i = 0; i < 60; i += 1) {
+    particles.push({
+      x: chargeInfo.x + (Math.random() - 0.5) * ab.radius * 0.5,
+      y: chargeInfo.y + (Math.random() - 0.5) * 20,
+      vx: (Math.random() - 0.5) * 80,
+      vy: -200 - Math.random() * 260,
+      life: 0.8,
+      color: i % 2 === 0 ? "#fff2a8" : "#fb923c",
+      size: 5,
+    });
+  }
+  cameraShake = 0.35;
+  if (Math.hypot(player.x - chargeInfo.x, player.y - chargeInfo.y) < ab.radius && player.invuln <= 0) {
+    const dmg = Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+    player.hp -= dmg;
+    player.invuln = 0.7;
+    floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
+  }
+}
+
+// === SPHAGNE ABILITIES ===
+function castPoisonCloud(mob, def, ab, chargeInfo) {
+  if (!chargeInfo) return;
+  lavaPools.push({
+    x: chargeInfo.x, y: chargeInfo.y,
+    radius: ab.radius,
+    damage: mob.damage * ab.damage,
+    life: ab.duration,
+    color: ab.color,
+    slow: ab.slow || 0,
+    isPoison: true,
+  });
+  for (let i = 0; i < 30; i += 1) {
+    const ang = Math.random() * Math.PI * 2;
+    particles.push({
+      x: chargeInfo.x, y: chargeInfo.y,
+      vx: Math.cos(ang) * (80 + Math.random() * 80),
+      vy: Math.sin(ang) * (80 + Math.random() * 80),
+      life: 0.7,
+      color: i % 2 === 0 ? "#bbf7a0" : "#84a665",
+      size: 5,
+    });
+  }
+}
+
+function spawnSphagneDaughters(parent, def) {
+  // Den Boss selbst zu einer Tochter machen + eine zweite spawnen
+  parent.hp = Math.round(parent.maxHp * 0.45);
+  parent.maxHp = parent.hp;
+  parent.damage = Math.round(parent.damage * 0.6);
+  parent.scale = (parent.scale || 1) * 0.7;
+  parent.r = Math.round(parent.r * 0.78);
+  parent.name = `${def.name} (Tochter)`;
+  parent.isDaughter = true;
+  // Zweite Tochter daneben
+  const angle = Math.random() * Math.PI * 2;
+  const dx = Math.cos(angle) * 80;
+  const dy = Math.sin(angle) * 80;
+  mobs.push({
+    x: parent.x + dx, y: parent.y + dy,
+    r: parent.r,
+    hp: parent.hp, maxHp: parent.hp,
+    speed: parent.speed,
+    damage: parent.damage,
+    xp: Math.round(parent.xp * 0.5),
+    elite: true,
+    rank: "boss",
+    name: parent.name,
+    color: def.appearance.body,
+    scale: parent.scale,
+    hitTimer: 0,
+    bossDef: def,
+    bossPhase: 2,
+    abilityCds: {},
+    isWorldBoss: false,
+    isDaughter: true,
+    hasSplit: true,
+  });
+  cameraShake = 0.55;
+  showToast(`${def.name} teilt sich!`);
+}
+
+function castSporeBurst(mob, def, ab) {
+  const radius = ab.radius;
+  crescentWaves.push({
+    x: mob.x, y: mob.y, angle: 0,
+    range: radius * 1.1, radius: radius * 1.1,
+    color: ab.color, life: 0.6, maxLife: 0.6,
+  });
+  for (let i = 0; i < 40; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    particles.push({
+      x: mob.x, y: mob.y,
+      vx: Math.cos(a) * (180 + Math.random() * 180),
+      vy: Math.sin(a) * (180 + Math.random() * 180),
+      life: 0.6,
+      color: "#bbf7a0",
+      size: 5,
+    });
+  }
+  if (Math.hypot(player.x - mob.x, player.y - mob.y) < radius && player.invuln <= 0) {
+    const dmg = Math.max(5, Math.round(mob.damage * ab.damage - totalDefense() * 0.5));
+    player.hp -= dmg;
+    player.invuln = 0.6;
+    floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
+    applyStatus(player, "poisoned", 3);
+  }
+}
+
+// === AETHERIUS ABILITIES ===
+function castLightningChain(mob, def, ab) {
+  // Springt bis zu 3x zwischen Spieler/Bot/Stein
+  const targets = [];
+  targets.push({ x: player.x, y: player.y, isPlayer: true });
+  let last = { x: mob.x, y: mob.y };
+  const visited = new Set();
+  for (let jump = 0; jump < (ab.maxJumps || 3); jump += 1) {
+    let best = null, bestD = ab.jumpRange;
+    for (const candidate of [{ x: player.x, y: player.y, isPlayer: true }]) {
+      if (visited.has("player")) continue;
+      const dd = Math.hypot(candidate.x - last.x, candidate.y - last.y);
+      if (dd < bestD) { best = candidate; bestD = dd; }
+    }
+    if (!best) break;
+    // Visualisierung: weißer Strahl
+    for (let i = 0; i < 12; i += 1) {
+      const t = i / 12;
+      particles.push({
+        x: last.x + (best.x - last.x) * t + (Math.random() - 0.5) * 14,
+        y: last.y + (best.y - last.y) * t + (Math.random() - 0.5) * 14,
+        vx: (Math.random() - 0.5) * 40,
+        vy: (Math.random() - 0.5) * 40,
+        life: 0.3,
+        color: ab.color,
+        size: 4,
+      });
+    }
+    if (best.isPlayer && player.invuln <= 0) {
+      const dmg = Math.max(6, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+      player.hp -= dmg;
+      player.invuln = 0.3;
+      floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
+      visited.add("player");
+    }
+    last = best;
+  }
+}
+
+function castWindBurst(mob, def, ab) {
+  crescentWaves.push({
+    x: mob.x, y: mob.y, angle: 0,
+    range: ab.radius * 1.1, radius: ab.radius * 1.1,
+    color: ab.color, life: 0.5, maxLife: 0.5,
+  });
+  const dd = Math.hypot(player.x - mob.x, player.y - mob.y);
+  if (dd < ab.radius && player.invuln <= 0) {
+    const dmg = Math.max(5, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+    player.hp -= dmg;
+    player.invuln = 0.5;
+    floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
+    // Knockback
+    const a = Math.atan2(player.y - mob.y, player.x - mob.x);
+    player.x = clamp(player.x + Math.cos(a) * ab.knockback, player.r, world.w - player.r);
+    player.y = clamp(player.y + Math.sin(a) * ab.knockback, player.r, world.h - player.r);
+  }
+  cameraShake = 0.3;
+}
+
+function castThunderclap(mob, def, ab) {
+  crescentWaves.push({
+    x: mob.x, y: mob.y, angle: 0,
+    range: ab.radius * 1.1, radius: ab.radius * 1.1,
+    color: ab.color, life: 0.7, maxLife: 0.7,
+  });
+  for (let i = 0; i < 50; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    particles.push({
+      x: mob.x, y: mob.y,
+      vx: Math.cos(a) * (220 + Math.random() * 200),
+      vy: Math.sin(a) * (220 + Math.random() * 200),
+      life: 0.5,
+      color: ab.color,
+      size: 5,
+    });
+  }
+  cameraShake = 0.5;
+  const dd = Math.hypot(player.x - mob.x, player.y - mob.y);
+  if (dd < ab.radius && player.invuln <= 0) {
+    const dmg = Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+    player.hp -= dmg;
+    player.invuln = ab.stunDuration || 1.5;
+    floatText(player.x, player.y - 36, `STUN -${dmg}`, ab.color);
   }
 }
 
@@ -739,9 +1153,11 @@ function travelToWorld(targetId, edge) {
   stones.length = 0;
   droppedItems.length = 0;
   projectiles.length = 0;
+  lavaPools.length = 0;
   seedWorld();
   portalCooldown = 2.2;
   showToast(`Du betrittst: ${def.name}`);
+  sfx.portal();
   cameraShake = 0.3;
   skillFlashes.push({ color: "#9ee7ff", life: 0.3, maxLife: 0.3 });
 }
@@ -829,6 +1245,7 @@ window.addEventListener("keydown", (event) => {
   if (key === "g" || key === "h" || key === "j") interactNpc(key);
   if (key === "i" || key === "c") toggleOverlay("invOverlay");
   if (key === "t") toggleOverlay("talentsOverlay");
+  if (key === "b") { toggleOverlay("codexOverlay"); renderCodex(); }
   if (key === "m") toggleOverlay("questOverlay");
   if (key === "p") toggleOverlay("pvpOverlay");
   if (event.key === "Escape") closeAllOverlays();
@@ -853,7 +1270,10 @@ function closeAllOverlays() {
 }
 
 document.querySelectorAll(".hud-toggles button[data-overlay]").forEach((btn) => {
-  btn.addEventListener("click", () => toggleOverlay(btn.dataset.overlay));
+  btn.addEventListener("click", () => {
+    toggleOverlay(btn.dataset.overlay);
+    if (btn.dataset.overlay === "codexOverlay") renderCodex();
+  });
 });
 document.querySelectorAll(".overlay-close").forEach((btn) => {
   btn.addEventListener("click", closeAllOverlays);
@@ -880,13 +1300,242 @@ ui.smithReturn?.addEventListener("click", () => {
   smithSelectedIndex = null;
   renderSmithSlot();
 });
-ui.mergeStacks?.addEventListener("click", () => {
-  if (!isNearBlacksmith()) {
-    showToast("Geh zum Schmied (F-Symbol) um zu verschmelzen.");
-    return;
+function renderCodex() {
+  const tabs = document.querySelector("#codexTabs");
+  const content = document.querySelector("#codexContent");
+  if (!tabs || !content) return;
+  // Tabs
+  const worldOrder = ["meadows", "frostwastes", "emberforge", "shadowfen", "skyspire"];
+  tabs.innerHTML = worldOrder.map((id) => {
+    const def = worldDefs[id];
+    if (!def) return "";
+    return `<button type="button" data-codex-world="${id}" class="${id === codexWorldId ? "active" : ""}">${def.name}</button>`;
+  }).join("");
+  tabs.querySelectorAll("[data-codex-world]").forEach((b) => b.addEventListener("click", () => {
+    codexWorldId = b.dataset.codexWorld;
+    renderCodex();
+  }));
+  // Content für aktuelle Welt
+  const wDef = worldDefs[codexWorldId];
+  const pool = mobPools[codexWorldId] || {};
+  const drops = dropTables[codexWorldId] || {};
+  const boss = bossForWorld(codexWorldId);
+  const sectionHTML = [];
+  // Welt-Info-Header
+  sectionHTML.push(`
+    <div class="codex-world-head">
+      <strong>${wDef.name}</strong>
+      <small>${wDef.subtitle || ""}</small>
+      <small class="codex-lvl">Level: ${wDef.levelRange?.[0] || "?"} – ${wDef.levelRange?.[1] || "?"}</small>
+    </div>
+  `);
+  // Mobs + Eliten
+  for (const rank of ["mob", "elite"]) {
+    const skins = pool[rank];
+    if (!skins?.length) continue;
+    const table = drops[rank];
+    sectionHTML.push(`<div class="codex-section"><h3>${rank === "mob" ? "Mobs" : "Eliten"}</h3>`);
+    for (const skin of skins) {
+      sectionHTML.push(`
+        <div class="codex-card">
+          <div class="codex-card-head">
+            <span class="codex-mob-swatch" style="background: linear-gradient(135deg, ${skin.head}, ${skin.body});"></span>
+            <div>
+              <strong>${skin.name}</strong>
+              <small>Form: ${skin.shape || "humanoid"}</small>
+            </div>
+          </div>
+          ${renderDropList(table)}
+        </div>
+      `);
+    }
+    sectionHTML.push(`</div>`);
   }
-  mergeStacks();
+  // Miniboss + Boss-Drops (generic)
+  if (drops.miniboss) {
+    sectionHTML.push(`
+      <div class="codex-section"><h3>Miniboss</h3>
+        <div class="codex-card">
+          <div class="codex-card-head">
+            <span class="codex-mob-swatch" style="background: #f97316;"></span>
+            <div><strong>Miniboss (zufälliger Name)</strong><small>spawnt regelmäßig</small></div>
+          </div>
+          ${renderDropList(drops.miniboss)}
+        </div>
+      </div>
+    `);
+  }
+  // Welt-Boss
+  if (boss) {
+    // Abilities pro Phase gruppieren
+    const phaseGroups = { 1: [], 2: [], 3: [] };
+    for (const [key, ab] of Object.entries(boss.abilities)) {
+      const ph = ab.phase || 1;
+      if (phaseGroups[ph]) phaseGroups[ph].push({ key, ...ab });
+    }
+    const phasesHTML = [1, 2, 3].map((p) => {
+      const abs = phaseGroups[p];
+      if (!abs.length) return "";
+      const pctRange = p === 1 ? ">66%" : p === 2 ? "33-66%" : "<33%";
+      const phaseColor = p === 3 ? "var(--red)" : p === 2 ? "var(--gold)" : "var(--green)";
+      return `
+        <div class="boss-phase">
+          <div class="boss-phase-head">
+            <span class="phase-pill" style="background: ${phaseColor}">Phase ${p}</span>
+            <small>${pctRange} HP</small>
+          </div>
+          <ul class="boss-abilities">
+            ${abs.map((a) => `
+              <li>
+                <strong>${a.hint || a.key}</strong>
+                <small class="ab-cd">Cooldown: ${a.cooldown}s${a.telegraphDuration ? ` · ${a.telegraphDuration}s Lade-Zeit (Telegraph)` : ""}</small>
+                ${a.counter ? `<small class="ab-counter">↳ Konter: ${a.counter}</small>` : ""}
+              </li>
+            `).join("")}
+          </ul>
+        </div>
+      `;
+    }).join("");
+    sectionHTML.push(`
+      <div class="codex-section"><h3>Welt-Boss</h3>
+        <div class="codex-card codex-boss">
+          <div class="codex-card-head">
+            <span class="codex-mob-swatch" style="background: ${boss.appearance.body}; border: 2px solid ${boss.appearance.head};"></span>
+            <div>
+              <strong>${boss.name}</strong>
+              <small>${boss.title}</small>
+            </div>
+          </div>
+          <div class="boss-phases">${phasesHTML}</div>
+          ${renderDropList({ rolls: boss.drops.rolls.concat((boss.drops.guaranteed || []).map((id) => ({ id, chance: 1 }))), goldRange: boss.drops.goldRange })}
+          ${boss.pet ? `<small class="codex-pet">🐾 Pet beim Sieg: ${boss.pet.name}</small>` : ""}
+        </div>
+      </div>
+    `);
+  } else if (drops.boss) {
+    sectionHTML.push(`
+      <div class="codex-section"><h3>Welt-Boss</h3>
+        <div class="codex-card">
+          <div class="codex-card-head">
+            <span class="codex-mob-swatch" style="background: #d946ef;"></span>
+            <div><strong>Generischer Boss</strong><small>noch nicht ausgearbeitet</small></div>
+          </div>
+          ${renderDropList(drops.boss)}
+        </div>
+      </div>
+    `);
+  }
+  // Metin-Stein
+  if (drops.metin) {
+    const style = getStoneStyle(codexWorldId);
+    sectionHTML.push(`
+      <div class="codex-section"><h3>Metin-Stein</h3>
+        <div class="codex-card">
+          <div class="codex-card-head">
+            <span class="codex-mob-swatch" style="background: ${style.core};"></span>
+            <div><strong>${style.name}</strong><small>Wächter spawnen bei 75/50/25% HP</small></div>
+          </div>
+          ${renderDropList(drops.metin)}
+        </div>
+      </div>
+    `);
+  }
+  content.innerHTML = sectionHTML.join("");
+}
+
+function renderDropList(table) {
+  if (!table) return "";
+  const rolls = (table.rolls || []).map((entry) => {
+    const def = itemDefs[entry.id];
+    if (!def) return "";
+    const pct = Math.round(entry.chance * 100);
+    return `<li>
+      <span class="dl-icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span>
+      <span>${def.name}</span>
+      <span class="dl-pct">${pct}%</span>
+    </li>`;
+  }).join("");
+  const gold = table.goldRange ? `<li class="dl-gold"><span class="dl-icon">G</span><span>Gold</span><span class="dl-pct">${table.goldRange[0]}–${table.goldRange[1]}</span></li>` : "";
+  return `<ul class="codex-drops">${gold}${rolls}</ul>`;
+}
+
+function applySmithMode(mode) {
+  smithMode = mode;
+  document.querySelectorAll("[data-smith-mode]").forEach((b) => b.classList.toggle("active", b.dataset.smithMode === mode));
+  const upgradeBlock = document.querySelector("#smithUpgradeBlock");
+  const mergeBlock = document.querySelector("#smithMergeBlock");
+  if (mode === "merge") {
+    upgradeBlock?.classList.add("hidden");
+    mergeBlock?.classList.remove("hidden");
+    inventoryFilter = "weapon"; // Common-Waffen sind verschmelzbar — Filter zeigt sie an
+    // Reset Smith-Slot wenn vorher etwas drin war
+    smithSelectedIndex = null;
+    renderSmithSlot();
+    renderMergeSlots();
+  } else {
+    upgradeBlock?.classList.remove("hidden");
+    mergeBlock?.classList.add("hidden");
+    inventoryFilter = mode; // "weapon" oder "armor"
+    // Wenn aktueller Smith-Slot nicht zum Modus passt → leeren
+    if (smithSelectedIndex !== null) {
+      const inv = player.inventory[smithSelectedIndex];
+      const def = inv ? itemDefs[inv.id] : null;
+      if (!def || def.type !== mode) smithSelectedIndex = null;
+    }
+    const label = document.querySelector("#smithModeLabel");
+    if (label) label.textContent = mode === "armor" ? "Rüstung legen" : "Waffe legen";
+    renderSmithSlot();
+  }
+  renderInventory();
+}
+
+document.querySelectorAll("[data-smith-mode]").forEach((btn) => {
+  btn.addEventListener("click", () => applySmithMode(btn.dataset.smithMode));
 });
+
+document.querySelector("#mergeClear")?.addEventListener("click", clearMergeSlots);
+document.querySelector("#mergeConfirm")?.addEventListener("click", confirmMerge);
+// Klick auf leeren Merge-Slot fuellt automatisch aus dem Inventar.
+// Klick auf gefuellten Slot entfernt das Item.
+// Wichtig: Stacks mit count>1 werden mehrfach genutzt (mehrere Slots → selber Index).
+for (let i = 0; i < 3; i += 1) {
+  document.querySelector(`#mergeSlot${i}`)?.addEventListener("click", () => {
+    if (mergeSlots[i] !== null) {
+      mergeSlots[i] = null;
+      renderMergeSlots();
+      renderInventory();
+      return;
+    }
+    // Welche ID ist bereits in den Slots? Alle Slots müssen identisch sein.
+    let existingId = null;
+    for (const s of mergeSlots) {
+      if (s !== null) { existingId = player.inventory[s]?.id; break; }
+    }
+    // Wie oft ist jeder Index schon belegt?
+    const usageCount = new Map();
+    for (const s of mergeSlots) {
+      if (s !== null) usageCount.set(s, (usageCount.get(s) || 0) + 1);
+    }
+    // Finde Inventar-Eintrag dessen restliche count noch nicht aufgebraucht ist.
+    for (let idx = 0; idx < player.inventory.length; idx += 1) {
+      const inv = player.inventory[idx];
+      if (!inv) continue;
+      const def = itemDefs[inv.id];
+      if (!def || !mergeMap[inv.id]) continue;
+      if (existingId && inv.id !== existingId) continue;
+      const alreadyUsed = usageCount.get(idx) || 0;
+      const available = (inv.count || 1) - alreadyUsed;
+      if (available <= 0) continue;
+      mergeSlots[i] = idx;
+      renderMergeSlots();
+      renderInventory();
+      return;
+    }
+    showToast(existingId
+      ? `Kein weiteres ${itemDefs[existingId]?.name || "Item"} im Inventar.`
+      : "Keine verschmelzbaren Items im Inventar (nur Common-Waffen/Rüstung).");
+  });
+}
 
 document.querySelector("#traderBuyTab")?.addEventListener("click", () => { traderMode = "buy"; renderTrader(); });
 document.querySelector("#traderSellTab")?.addEventListener("click", () => { traderMode = "sell"; renderTrader(); });
@@ -1133,12 +1782,29 @@ function drawPvpBot() {
 }
 ui.pvpReady?.addEventListener("click", () => togglePvpReady());
 
-ui.sortInventory.addEventListener("click", () => {
-  const equipped = equippedWeaponItem();
-  player.inventory.sort((a, b) => itemDefs[a.id].name.localeCompare(itemDefs[b.id].name));
-  player.weaponIndex = Math.max(0, player.inventory.indexOf(equipped));
+const typeOrder = { weapon: 0, armor: 1, potion: 2, material: 3 };
+const rarityOrder = { legendary: 0, epic: 1, rare: 2, common: 3 };
+
+function sortInventoryBy(mode) {
+  const equipWeapon = equippedWeaponItem();
+  const equipArmor = equippedArmorItem();
+  const list = player.inventory;
+  const cmp = {
+    power: (a, b) => itemPowerScore(b) - itemPowerScore(a),
+    rarity: (a, b) => (rarityOrder[itemDefs[a.id]?.rarity] ?? 9) - (rarityOrder[itemDefs[b.id]?.rarity] ?? 9)
+      || itemPowerScore(b) - itemPowerScore(a),
+    type: (a, b) => (typeOrder[itemDefs[a.id]?.type] ?? 9) - (typeOrder[itemDefs[b.id]?.type] ?? 9)
+      || (rarityOrder[itemDefs[a.id]?.rarity] ?? 9) - (rarityOrder[itemDefs[b.id]?.rarity] ?? 9),
+    name: (a, b) => itemDefs[a.id].name.localeCompare(itemDefs[b.id].name),
+  }[mode] || cmp.power;
+  list.sort(cmp);
+  player.weaponIndex = equipWeapon ? list.indexOf(equipWeapon) : -1;
+  player.armorIndex = equipArmor ? list.indexOf(equipArmor) : -1;
   renderInventory();
-});
+  saveCurrentCharacter();
+}
+
+ui.sortInventory.addEventListener("change", (e) => sortInventoryBy(e.target.value));
 
 function showItemTooltip(slot) {
   if (!ui.itemTooltip) return;
@@ -1190,11 +1856,21 @@ smithInventoryEl?.addEventListener("click", (event) => {
   const invItem = player.inventory[index];
   if (!invItem) return;
   const def = itemDefs[invItem.id];
-  if (def.type === "weapon" || def.type === "armor") {
-    selectSmithItem(index);
-  } else if (def.type === "potion") {
-    usePotion();
+  if (smithMode === "merge") {
+    if (slot.classList.contains("merge-disabled")) return;
+    if (!mergeMap[invItem.id]) {
+      showToast("Nur Common-Waffen/Rüstung sind verschmelzbar.");
+      return;
+    }
+    tryAddToMerge(index);
+    return;
   }
+  // Upgrade-Modus
+  if (def.type !== smithMode) {
+    showToast(smithMode === "weapon" ? "Wähle eine Waffe." : "Wähle eine Rüstung.");
+    return;
+  }
+  selectSmithItem(index);
 });
 
 document.querySelectorAll("[data-inv-filter]").forEach((btn) => {
@@ -1561,6 +2237,28 @@ async function enterGameWithCharacter(char) {
   hideCharacterSelect();
   applyCharacter(char);
   await connectMultiplayer();
+  scheduleTutorial(char);
+}
+
+const TUTORIAL_FLAG = "blocpugnaTutorialSeen";
+function scheduleTutorial(char) {
+  // Nur beim allerersten Char und nur einmal pro Browser zeigen
+  if (localStorage.getItem(TUTORIAL_FLAG)) return;
+  if ((char.level || 1) > 1) return;
+  const steps = [
+    { delay: 1500, text: "Willkommen in den Pugna-Wiesen! Bewegen mit WASD oder Pfeiltasten." },
+    { delay: 8000, text: "Maus zielen, Linksklick oder Leertaste schlägt zu." },
+    { delay: 16000, text: "Schmied steht in der Mitte. Drücke F um zu schmieden." },
+    { delay: 24000, text: "G/H/J sprechen mit Händlerin, Trainerin und Kurier." },
+    { delay: 32000, text: "Drücke B für den Codex — alle Mobs + Bosse + Drops." },
+    { delay: 40000, text: "Geh durch ein Portal am Rand der Welt — die anderen Welten warten." },
+  ];
+  for (const s of steps) {
+    setTimeout(() => {
+      if (player.hp > 0) showToast(s.text);
+    }, s.delay);
+  }
+  localStorage.setItem(TUTORIAL_FLAG, "1");
 }
 
 ui.charList?.addEventListener("click", (event) => {
@@ -2048,8 +2746,17 @@ function camera() {
   };
 }
 
+function breakInvisOnAttack() {
+  if ((player.invisTimer || 0) > 0) {
+    player.invisTimer = 0;
+    skillFlashes.push({ color: "#c4b8ff", life: 0.15, maxLife: 0.15 });
+    floatText(player.x, player.y - 50, "Sichtbar!", "#c4b8ff");
+  }
+}
+
 function swing() {
   if (player.attackCooldown > 0 || player.hp <= 0) return;
+  breakInvisOnAttack();
   const weapon = currentWeapon();
   const classDef = getClassDef(player.classId);
   player.attackCooldown = weapon.cooldown || 0.42;
@@ -2312,6 +3019,83 @@ function drawLowHpVignette() {
   ctx.restore();
 }
 
+function updateLavaPools(dt) {
+  if ((player.poolTickAccum || 0) < 0) player.poolTickAccum = 0;
+  player.poolTickAccum = (player.poolTickAccum || 0) + dt;
+  const tick = player.poolTickAccum >= 0.5;
+  if (tick) player.poolTickAccum = 0;
+  for (let i = lavaPools.length - 1; i >= 0; i -= 1) {
+    const p = lavaPools[i];
+    p.life -= dt;
+    if (p.life <= 0) { lavaPools.splice(i, 1); continue; }
+    if (tick) {
+      const inside = Math.hypot(player.x - p.x, player.y - p.y) < p.radius;
+      if (inside && player.invuln <= 0) {
+        const dmg = Math.max(2, Math.round(p.damage * 0.5 - totalDefense() * 0.3));
+        player.hp -= dmg;
+        floatText(player.x, player.y - 28, `-${dmg}`, p.color);
+        if (p.isPoison) applyStatus(player, "poisoned", 2);
+        if (p.slow) player.frostSlowTimer = Math.max(player.frostSlowTimer || 0, 1.2);
+      }
+    }
+  }
+}
+
+function drawLavaPools() {
+  for (const p of lavaPools) {
+    const lifePct = p.life / 5;
+    const flicker = 0.6 + Math.sin(performance.now() / 100 + p.x) * 0.2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fillStyle = hexToRgba(p.color, 0.22 * lifePct * flicker);
+    ctx.fill();
+    ctx.strokeStyle = hexToRgba(p.color, 0.7 * lifePct);
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    // Innere Hitze-Funken
+    ctx.fillStyle = hexToRgba(p.color, 0.55 * lifePct);
+    for (let i = 0; i < 3; i += 1) {
+      const a = (performance.now() / 200 + i * 2) % (Math.PI * 2);
+      const r = p.radius * 0.6;
+      ctx.beginPath();
+      ctx.arc(p.x + Math.cos(a) * r, p.y + Math.sin(a) * r, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawBossCharges() {
+  // Telegraph-Kreise für AoE-Bosses
+  for (const mob of mobs) {
+    if (!mob.charges || !mob.bossDef) continue;
+    for (const key of Object.keys(mob.charges)) {
+      const c = mob.charges[key];
+      const ab = mob.bossDef.abilities[key];
+      if (!ab) continue;
+      const pct = 1 - c.t / c.max;
+      ctx.save();
+      const tx = c.x ?? mob.x;
+      const ty = c.y ?? mob.y;
+      ctx.beginPath();
+      ctx.arc(tx, ty, ab.radius || 100, 0, Math.PI * 2);
+      ctx.fillStyle = hexToRgba(ab.color, 0.08 + pct * 0.2);
+      ctx.fill();
+      ctx.strokeStyle = hexToRgba(ab.color, 0.6 + pct * 0.4);
+      ctx.lineWidth = 3 + pct * 4;
+      ctx.setLineDash([14, 10]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.font = "bold 13px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = ab.color;
+      ctx.fillText(`${(ab.hint || key).split(" ")[0]} ${c.t.toFixed(1)}s`, tx, ty - (ab.radius || 100) - 10);
+      ctx.restore();
+    }
+  }
+}
+
 function updateSkillFlashes(dt) {
   for (let i = skillFlashes.length - 1; i >= 0; i -= 1) {
     skillFlashes[i].life -= dt;
@@ -2322,6 +3106,8 @@ function updateSkillFlashes(dt) {
 function useAbility(abilityId) {
   if (!abilityId || player.hp <= 0 || abilityCooldown(abilityId) > 0) return;
   const ability = getAbilityDef(abilityId);
+  // Schatten-Doppel selbst bricht Invis nicht — alle anderen Offensive-Abilities schon
+  if (abilityId !== "shadowDouble") breakInvisOnAttack();
   const handlers = {
     shieldBash,
     whirlwind,
@@ -2336,6 +3122,7 @@ function useAbility(abilityId) {
   handlers[abilityId]?.();
   setAbilityCooldown(abilityId);
   skillFlashes.push({ color: ability.color || "#f4c95d", life: 0.18, maxLife: 0.18 });
+  if (ability.ultimate) sfx.ulti(); else sfx.skill();
   const btn = abilityId === primaryAbilityId() ? ui.skillPrimary
     : abilityId === secondaryAbilityId() ? ui.skillSecondary
     : ui.skillUltimate;
@@ -2352,55 +3139,61 @@ function flashActionSlot(el) {
 }
 
 function shieldBash() {
+  const m = mastery("shieldBash");
+  const dmgMult = 0.8 * (1 + m * 0.20);
+  const stunDur = 1.5 + m * 0.4;
   const angle = aimAngle();
   const impact = pointAhead(92, angle);
   let hit = false;
   for (const mob of [...mobs]) {
     if (!isInCone(mob, angle, 150, 56)) continue;
-    applyStatus(mob, "stunned", 1.5);
+    applyStatus(mob, "stunned", stunDur);
     mob.x += Math.cos(angle) * 36;
     mob.y += Math.sin(angle) * 36;
-    damageMob(mob, Math.floor(attackPower() * 0.8), { tag: "stun" });
+    damageMob(mob, Math.floor(attackPower() * dmgMult), { tag: "stun" });
     hit = true;
   }
   for (const remote of Object.values(remotePlayers)) {
     if (isPointInCone(remote, angle, 150, 56)) {
-      hit = damageRemotePlayer(remote, attackPower() * 0.85, "stun") || hit;
+      hit = damageRemotePlayer(remote, attackPower() * (dmgMult + 0.05), "stun") || hit;
     }
   }
   burst(impact.x, impact.y, "#f4c95d", hit ? 28 : 14);
 }
 
 function whirlwind() {
+  const m = mastery("whirlwind");
+  const radius = 154 * (1 + m * 0.12);
+  const dmgMult = 1.18 * (1 + m * 0.15);
   let hit = false;
   for (const mob of [...mobs]) {
     const d = dist(player, mob);
-    if (d > 154 + mob.r) continue;
+    if (d > radius + mob.r) continue;
     const stunnedBonus = statusTime(mob, "stunned") > 0 ? 1.55 : 1;
-    damageMob(mob, Math.floor(attackPower() * 1.18 * stunnedBonus), { tag: stunnedBonus > 1 ? "combo" : "sweep" });
+    damageMob(mob, Math.floor(attackPower() * dmgMult * stunnedBonus), { tag: stunnedBonus > 1 ? "combo" : "sweep" });
     hit = true;
   }
   for (const stone of [...stones]) {
-    if (dist(player, stone) < 170 + stone.r) damageStone(stone, Math.floor(attackPower() * 1.15));
+    if (dist(player, stone) < radius + stone.r) damageStone(stone, Math.floor(attackPower() * (dmgMult - 0.03)));
   }
   for (const remote of Object.values(remotePlayers)) {
-    if (Math.hypot(remote.x - player.x, remote.y - player.y) < 170) {
-      hit = damageRemotePlayer(remote, attackPower() * 1.15, "combo") || hit;
+    if (Math.hypot(remote.x - player.x, remote.y - player.y) < radius) {
+      hit = damageRemotePlayer(remote, attackPower() * (dmgMult - 0.03), "combo") || hit;
     }
   }
-  crescentWaves.push({ x: player.x, y: player.y - 12, angle: 0, range: 152, radius: 152, life: 0.34, maxLife: 0.34, color: "#f4c95d", radial: true });
+  crescentWaves.push({ x: player.x, y: player.y - 12, angle: 0, range: radius, radius: radius, life: 0.34, maxLife: 0.34, color: "#f4c95d", radial: true });
   burst(player.x, player.y, hit ? "#f4c95d" : "#d9dee5", 28);
 }
 
 function shadowStep() {
+  const m = mastery("shadowStep");
+  const range = 280 + m * 40;
   const angle = aimAngle();
-  // Längere Reichweite
-  player.x = clamp(player.x + Math.cos(angle) * 280, player.r, world.w - player.r);
-  player.y = clamp(player.y + Math.sin(angle) * 280, player.r, world.h - player.r);
-  // 2 Sekunden alle Treffer kritisch
+  player.x = clamp(player.x + Math.cos(angle) * range, player.r, world.w - player.r);
+  player.y = clamp(player.y + Math.sin(angle) * range, player.r, world.h - player.r);
   player.dashCritWindow = 2.0;
-  // 30% Heal
-  const heal = Math.round(player.maxHp * 0.30);
+  // 30% Heal + 5% pro Mastery
+  const heal = Math.round(player.maxHp * (0.30 + m * 0.05));
   player.hp = Math.min(player.maxHp, player.hp + heal);
   floatText(player.x, player.y - 50, `+${heal} HP`, "#51d37a");
   for (let i = 0; i < 36; i += 1) {
@@ -2417,13 +3210,52 @@ function shadowStep() {
   }
 }
 
+function spawnPoisonSpit(angle) {
+  // Sprite-Projektil (rein visuell) — fliegt vom Spieler in Kegelmitte
+  const count = 14;
+  for (let i = 0; i < count; i += 1) {
+    const spread = (Math.random() - 0.5) * 0.5;
+    const a = angle + spread;
+    const speed = 220 + Math.random() * 180;
+    const offsetT = i * 0.012;
+    setTimeout(() => {
+      particles.push({
+        x: player.x + Math.cos(angle) * 22,
+        y: player.y - 14 + Math.sin(angle) * 22,
+        vx: Math.cos(a) * speed,
+        vy: Math.sin(a) * speed + (Math.random() - 0.5) * 40,
+        life: 0.6 + Math.random() * 0.3,
+        color: i % 3 === 0 ? "#bbf7a0" : "#35d0a4",
+        size: 4 + Math.random() * 3,
+      });
+    }, offsetT * 1000);
+  }
+  // Spuck-Tropfen-Trail kurz und dick
+  for (let i = 0; i < 6; i += 1) {
+    particles.push({
+      x: player.x + Math.cos(angle) * (12 + i * 6),
+      y: player.y - 10 + Math.sin(angle) * (12 + i * 6),
+      vx: Math.cos(angle) * 60,
+      vy: Math.sin(angle) * 60 - 20,
+      life: 0.35,
+      color: "#84a665",
+      size: 6,
+    });
+  }
+}
+
 function poisonMark() {
+  const m = mastery("poisonMark");
+  const poisonDur = 5 + m;
+  const dotMult = 1 + m * 0.10;
   const angle = aimAngle();
   let marked = 0;
+  spawnPoisonSpit(angle);
   for (const mob of [...mobs]) {
     if (!isInCone(mob, angle, 260, 105)) continue;
     applyStatus(mob, "marked", 7);
-    applyStatus(mob, "poisoned", 5);
+    applyStatus(mob, "poisoned", poisonDur);
+    mob.poisonDotMult = dotMult; // tickStatuses liest das
     damageMob(mob, Math.floor(attackPower() * 0.75), { tag: "mark" });
     marked += 1;
   }
@@ -2437,9 +3269,11 @@ function poisonMark() {
 }
 
 function fireOrb() {
+  const m = mastery("fireOrb");
   const angle = aimAngle();
   const impact = pointAhead(260, angle);
-  const radius = 170;
+  const radius = 170 * (1 + m * 0.10);
+  const dmgMult = 1 + m * 0.15;
   // Visuals: explosion ring + sparks + screen flash
   crescentWaves.push({
     x: impact.x, y: impact.y, angle: 0, range: radius * 1.2, radius: radius * 1.2,
@@ -2463,27 +3297,30 @@ function fireOrb() {
   for (const mob of [...mobs]) {
     if (Math.hypot(mob.x - impact.x, mob.y - impact.y) > radius + mob.r) continue;
     const marked = statusTime(mob, "marked") > 0;
-    damageMob(mob, Math.floor(attackPower() * (marked ? 2.1 : 1.4)), { tag: marked ? "detonate" : "fire" });
+    damageMob(mob, Math.floor(attackPower() * (marked ? 2.1 : 1.4) * dmgMult), { tag: marked ? "detonate" : "fire" });
     if (marked) applyStatus(mob, "marked", 0);
     applyStatus(mob, "burning", 4);
   }
   for (const stone of [...stones]) {
-    if (Math.hypot(stone.x - impact.x, stone.y - impact.y) < radius + stone.r) damageStone(stone, Math.floor(attackPower() * 1.3));
+    if (Math.hypot(stone.x - impact.x, stone.y - impact.y) < radius + stone.r) damageStone(stone, Math.floor(attackPower() * 1.3 * dmgMult));
   }
   for (const remote of Object.values(remotePlayers)) {
     if (Math.hypot(remote.x - impact.x, remote.y - impact.y) < radius) {
-      damageRemotePlayer(remote, attackPower() * 1.4, "detonate");
+      damageRemotePlayer(remote, attackPower() * 1.4 * dmgMult, "detonate");
     }
   }
   if (pvpBotEntity && Math.hypot(pvpBotEntity.x - impact.x, pvpBotEntity.y - impact.y) < radius) {
-    damagePvpBot(attackPower() * 1.5);
+    damagePvpBot(attackPower() * 1.5 * dmgMult);
   }
   burst(impact.x, impact.y, "#e86f36", 40);
 }
 
 // === ULTIS ===
 function earthquake() {
-  const radius = 280;
+  const m = mastery("earthquake");
+  const radius = 280 * (1 + m * 0.10);
+  const dmgMult = 1 + m * 0.20;
+  // unten in damageMob-Call dmgMult anwenden
   // Big shockwave ring
   crescentWaves.push({
     x: player.x, y: player.y, angle: 0, range: radius, radius,
@@ -2506,43 +3343,44 @@ function earthquake() {
   cameraShake = 0.6;
   for (const mob of [...mobs]) {
     if (dist(player, mob) > radius + mob.r) continue;
-    damageMob(mob, Math.floor(attackPower() * 2.4), { tag: "combo" });
+    damageMob(mob, Math.floor(attackPower() * 2.4 * dmgMult), { tag: "combo" });
     applyStatus(mob, "stunned", 2.4);
     const ang = Math.atan2(mob.y - player.y, mob.x - player.x);
     mob.x += Math.cos(ang) * 60;
     mob.y += Math.sin(ang) * 60;
   }
   for (const stone of [...stones]) {
-    if (dist(player, stone) < radius + stone.r) damageStone(stone, Math.floor(attackPower() * 1.8));
+    if (dist(player, stone) < radius + stone.r) damageStone(stone, Math.floor(attackPower() * 1.8 * dmgMult));
   }
   for (const remote of Object.values(remotePlayers)) {
     if (Math.hypot(remote.x - player.x, remote.y - player.y) < radius) {
-      damageRemotePlayer(remote, attackPower() * 1.9, "combo");
+      damageRemotePlayer(remote, attackPower() * 1.9 * dmgMult, "combo");
     }
   }
   if (pvpBotEntity && dist(player, pvpBotEntity) < radius) {
-    damagePvpBot(attackPower() * 2.4);
+    damagePvpBot(attackPower() * 2.4 * dmgMult);
   }
   showToast("Erdbeben! Alles fliegt.");
 }
 
 function shadowDouble() {
-  // Decoy spawnt an aktueller Position
+  const m = mastery("shadowDouble");
+  const invisDur = 3.5 + m;
   const maxHp = Math.round(player.maxHp * 0.6);
   shadowDecoy = {
     x: player.x,
     y: player.y,
     hp: maxHp,
     maxHp,
-    life: 6, // existiert max 6s
+    life: 6,
     maxLife: 6,
     classId: player.classId,
+    detonateMult: 1 + m * 0.15,
   };
-  // Spieler springt zurück + wird unsichtbar
   const angle = aimAngle();
   player.x = clamp(player.x - Math.cos(angle) * 180, player.r, world.w - player.r);
   player.y = clamp(player.y - Math.sin(angle) * 180, player.r, world.h - player.r);
-  player.invisTimer = 3.5; // unsichtbar 3.5s
+  player.invisTimer = invisDur;
   player.invuln = 0.5;
   // Visuelle Effekte
   skillFlashes.push({ color: "#7a6cf2", life: 0.35, maxLife: 0.35 });
@@ -2581,7 +3419,7 @@ function updateShadowDecoy(dt) {
 function detonateShadowDecoy() {
   if (!shadowDecoy) return;
   const radius = 220;
-  const dmg = Math.round(attackPower() * 2.2);
+  const dmg = Math.round(attackPower() * 2.2 * (shadowDecoy.detonateMult || 1));
   crescentWaves.push({
     x: shadowDecoy.x, y: shadowDecoy.y, angle: 0,
     range: radius * 1.1, radius: radius * 1.1,
@@ -2639,9 +3477,11 @@ function drawShadowDecoy() {
 }
 
 function meteor() {
+  const m = mastery("meteor");
   const angle = aimAngle();
   const impact = pointAhead(320, angle);
-  const radius = 260;
+  const radius = 260 * (1 + m * 0.10);
+  const dmgMult = 1 + m * 0.15;
   // Falling meteor visual (instant for now)
   for (let i = 0; i < 4; i += 1) {
     crescentWaves.push({
@@ -2669,30 +3509,33 @@ function meteor() {
   cameraShake = 0.8;
   for (const mob of [...mobs]) {
     if (Math.hypot(mob.x - impact.x, mob.y - impact.y) > radius + mob.r) continue;
-    damageMob(mob, Math.floor(attackPower() * 3.0), { tag: "detonate" });
+    damageMob(mob, Math.floor(attackPower() * 3.0 * dmgMult), { tag: "detonate" });
     applyStatus(mob, "burning", 5);
   }
   for (const stone of [...stones]) {
-    if (Math.hypot(stone.x - impact.x, stone.y - impact.y) < radius + stone.r) damageStone(stone, Math.floor(attackPower() * 2.4));
+    if (Math.hypot(stone.x - impact.x, stone.y - impact.y) < radius + stone.r) damageStone(stone, Math.floor(attackPower() * 2.4 * dmgMult));
   }
   for (const remote of Object.values(remotePlayers)) {
     if (Math.hypot(remote.x - impact.x, remote.y - impact.y) < radius) {
-      damageRemotePlayer(remote, attackPower() * 2.6, "detonate");
+      damageRemotePlayer(remote, attackPower() * 2.6 * dmgMult, "detonate");
     }
   }
   if (pvpBotEntity && Math.hypot(pvpBotEntity.x - impact.x, pvpBotEntity.y - impact.y) < radius) {
-    damagePvpBot(attackPower() * 3.0);
+    damagePvpBot(attackPower() * 3.0 * dmgMult);
   }
   showToast("Meteor!");
 }
 
 function frostCircle() {
+  const m = mastery("frostCircle");
+  const slowDur = 4 + m;
+  const dmgMult = 1 + m * 0.10;
   const angle = aimAngle();
   const impact = pointAhead(170, angle);
   for (const mob of [...mobs]) {
     if (Math.hypot(mob.x - impact.x, mob.y - impact.y) > 150 + mob.r) continue;
-    applyStatus(mob, "frozen", 4);
-    damageMob(mob, Math.floor(attackPower() * 0.72), { tag: "frost" });
+    applyStatus(mob, "frozen", slowDur);
+    damageMob(mob, Math.floor(attackPower() * 0.72 * dmgMult), { tag: "frost" });
   }
   for (const remote of Object.values(remotePlayers)) {
     if (Math.hypot(remote.x - impact.x, remote.y - impact.y) < 150) {
@@ -2773,9 +3616,10 @@ function tickStatuses(target, dt) {
       target.dotAccum[status] = (target.dotAccum[status] || 0) + dt;
       if (target.dotAccum[status] >= 0.5) {
         target.dotAccum[status] -= 0.5;
+        const poisonMult = target.poisonDotMult || 1;
         const tickDmg = status === "burning"
           ? Math.max(2, Math.round(attackPower() * 0.12))
-          : Math.max(2, Math.round(attackPower() * 0.16));
+          : Math.max(2, Math.round(attackPower() * 0.16 * poisonMult));
         const color = status === "burning" ? "#ff7a3d" : "#35d0a4";
         target.hp -= tickDmg;
         target.hitTimer = 0.08;
@@ -3032,6 +3876,7 @@ function gainXp(amount) {
   }
   if (levelsGained > 0) {
     showToast(`Level ${player.level}! +${levelsGained} Talent-Punkt(e) (Taste T).`);
+    sfx.levelUp();
     renderTalents();
     saveCurrentCharacter();
   }
@@ -3076,6 +3921,7 @@ function usePotion() {
   player.hp = Math.min(player.maxHp, player.hp + itemDefs.health_potion.heal);
   if (potion.count <= 0) player.inventory = player.inventory.filter((entry) => entry.count > 0);
   showToast("Roter Trank genutzt.");
+  sfx.potion();
   flashActionSlot(ui.actionPotion);
   skillFlashes.push({ color: "#51d37a", life: 0.14, maxLife: 0.14 });
   renderInventory();
@@ -3118,6 +3964,7 @@ function useBlacksmith() {
   }
   closeAllOverlays();
   toggleOverlay("smithOverlay");
+  applySmithMode(smithMode || "weapon");
 }
 
 function upgradeAtBlacksmith(kind) {
@@ -3157,37 +4004,222 @@ function upgradeAtBlacksmith(kind) {
 }
 
 const mergeMap = {
+  // Common → Rare
   rust_sword: "iron_blade",
   twin_daggers: "iron_blade",
   apprentice_staff: "metin_glaive",
   leather_armor: "iron_armor",
+  // Rare → Epic
+  iron_blade: "pugna_cleaver",
+  metin_glaive: "storm_saber",
+  iron_armor: "steel_armor",
+  // Epic → Legendary
+  pugna_cleaver: "fullmoon_sickle",
+  storm_saber: "fullmoon_sickle",
+  steel_armor: "dragon_plate",
 };
 
-function mergeStacks() {
-  let merged = 0;
-  for (const entry of [...player.inventory]) {
-    if (!entry || entry.count < 3) continue;
-    const def = itemDefs[entry.id];
-    if (!def || def.rarity !== "common") continue;
-    if (def.type !== "weapon" && def.type !== "armor") continue;
-    const target = mergeMap[entry.id];
-    if (!target) continue;
-    const consume = Math.floor(entry.count / 3);
-    entry.count -= consume * 3;
-    for (let i = 0; i < consume; i += 1) {
-      const tdef = itemDefs[target];
-      const affixes = rollAffixes(tdef.rarity);
-      player.inventory.push({ id: target, count: 1, upgrade: 0, affixes });
+function tryAddToMerge(invIndex) {
+  const inv = player.inventory[invIndex];
+  if (!inv) return false;
+  const def = itemDefs[inv.id];
+  if (!def || (def.type !== "weapon" && def.type !== "armor")) return false;
+  if (!mergeMap[inv.id]) return false;
+  // freien Slot suchen
+  for (let i = 0; i < 3; i += 1) {
+    if (mergeSlots[i] === null) {
+      // Konsistenz: alle Slots müssen dieselbe ID haben
+      const existingId = mergeSlots.find((s) => s !== null);
+      if (existingId !== undefined) {
+        const existingInv = player.inventory[existingId];
+        if (existingInv && existingInv.id !== inv.id) {
+          showToast("Verschmelzen geht nur mit gleichen Items.");
+          return false;
+        }
+      }
+      mergeSlots[i] = invIndex;
+      renderMergeSlots();
+      renderInventory();
+      return true;
     }
-    merged += consume;
   }
-  player.inventory = player.inventory.filter((e) => (e.count || 0) > 0);
-  if (merged > 0) {
-    showToast(`${merged} Stapel verschmolzen → seltene Drops gerollt.`);
-    renderInventory();
+  showToast("Alle 3 Slots belegt — leere zuerst.");
+  return false;
+}
+
+function clearMergeSlots() {
+  mergeSlots = [null, null, null];
+  renderMergeSlots();
+  renderInventory();
+}
+
+function renderMergeSlots() {
+  let best = -1;
+  let bestScore = -1;
+  for (let i = 0; i < 3; i += 1) {
+    const idx = mergeSlots[i];
+    const inv = idx !== null ? player.inventory[idx] : null;
+    const el = document.querySelector(`#mergeSlot${i}`);
+    if (!el) continue;
+    if (!inv) {
+      el.className = "merge-slot empty";
+      el.innerHTML = `<span class="ms-num">${i + 1}</span>`;
+      continue;
+    }
+    const score = itemPowerScore(inv);
+    if (score > bestScore) { bestScore = score; best = i; }
+    const def = itemDefs[inv.id];
+    el.className = `merge-slot filled ${def.rarity || ""}`;
+    el.dataset.score = score;
+    const icon = svgIconFor(inv, def.color) || `<span class="icon" style="color:${def.color}">${def.icon}</span>`;
+    el.innerHTML = `
+      <span class="ms-num">${i + 1}</span>
+      <div class="ms-icon">${icon}</div>
+      <span class="ms-score">${score}</span>
+    `;
+  }
+  // Best-Highlight
+  for (let i = 0; i < 3; i += 1) {
+    const el = document.querySelector(`#mergeSlot${i}`);
+    if (el) el.classList.toggle("merge-best", i === best && mergeSlots[i] !== null);
+  }
+  // Preview + Confirm-Button
+  const preview = document.querySelector("#mergePreview");
+  const confirm = document.querySelector("#mergeConfirm");
+  const filled = mergeSlots.filter((s) => s !== null).length;
+  if (filled === 3) {
+    const firstIdx = mergeSlots[0];
+    const inv = player.inventory[firstIdx];
+    const targetId = mergeMap[inv.id];
+    const targetDef = itemDefs[targetId];
+    if (preview && targetDef) {
+      const targetIcon = svgIconFor({ id: targetId }, targetDef.color) || targetDef.icon;
+      const baseChance = mergeSuccessChance(targetDef.rarity);
+      const { boost, stoneId } = specialStoneBoost();
+      const totalChance = Math.min(0.95, baseChance + boost);
+      const chanceColor = totalChance >= 0.75 ? "var(--green)" : totalChance >= 0.5 ? "var(--gold)" : "var(--red)";
+      const stoneNote = stoneId
+        ? `<small class="mp-stone">+${Math.round(boost * 100)}% durch ${itemDefs[stoneId]?.name} (wird verbraucht)</small>`
+        : "";
+      preview.classList.remove("hidden");
+      preview.innerHTML = `
+        <div class="mp-arrow">⇣</div>
+        <div class="mp-result ${targetDef.rarity}">
+          <div class="mp-icon">${targetIcon}</div>
+          <strong>${targetDef.name}</strong>
+          <small>Rarität: ${rarityLabels[targetDef.rarity]} — Affixe werden gewürfelt</small>
+          <div class="mp-chance" style="color: ${chanceColor}">
+            <strong>Erfolgs-Chance: ${Math.round(totalChance * 100)}%</strong>
+          </div>
+          ${stoneNote}
+          <small class="mp-fail">Bei Misserfolg: nur 1 der 3 Items überlebt</small>
+        </div>
+      `;
+    }
+    if (confirm) confirm.disabled = false;
   } else {
-    showToast("Keine ausreichend grossen Common-Stapel zum Verschmelzen.");
+    if (preview) preview.classList.add("hidden");
+    if (confirm) confirm.disabled = true;
   }
+}
+
+function mergeSuccessChance(targetRarity) {
+  // Höhere Tiers schwerer
+  if (targetRarity === "rare") return 0.85;
+  if (targetRarity === "epic") return 0.60;
+  if (targetRarity === "legendary") return 0.35;
+  return 0.85;
+}
+
+function specialStoneBoost() {
+  // Welt-Spezial-Stein im Inventar → +15% Chance (verbraucht)
+  const map = { meadows: null, frostwastes: "frost_core", emberforge: "ember_spark", shadowfen: "shadow_essence", skyspire: "sky_shard" };
+  const stoneId = map[currentWorldId];
+  if (!stoneId) return { boost: 0, stoneId: null };
+  if (inventoryCount(stoneId) > 0) return { boost: 0.15, stoneId };
+  return { boost: 0, stoneId: null };
+}
+
+function confirmMerge() {
+  if (mergeSlots.some((s) => s === null)) {
+    showToast("Brauche 3 Items zum Verschmelzen.");
+    return;
+  }
+  if (!isNearBlacksmith()) {
+    showToast("Geh zum Schmied.");
+    return;
+  }
+  const items = mergeSlots.map((idx) => player.inventory[idx]).filter(Boolean);
+  if (items.length < 3 || !items.every((it) => it.id === items[0].id)) {
+    showToast("Alle 3 Items müssen identisch sein.");
+    return;
+  }
+  const targetId = mergeMap[items[0].id];
+  if (!targetId) {
+    showToast("Dieses Item kann nicht weiter verschmolzen werden.");
+    return;
+  }
+  const targetDef = itemDefs[targetId];
+  if (!targetDef) return;
+
+  // Konsumiere alle 3 Items
+  const consumeMap = new Map();
+  for (const idx of mergeSlots) consumeMap.set(idx, (consumeMap.get(idx) || 0) + 1);
+  const indices = [...consumeMap.keys()].sort((a, b) => b - a);
+  for (const idx of indices) {
+    const entry = player.inventory[idx];
+    if (!entry) continue;
+    entry.count -= consumeMap.get(idx);
+    if (entry.count <= 0) {
+      player.inventory.splice(idx, 1);
+      if (player.weaponIndex === idx) player.weaponIndex = -1;
+      if (player.armorIndex === idx) player.armorIndex = -1;
+      if (player.weaponIndex > idx) player.weaponIndex -= 1;
+      if (player.armorIndex > idx) player.armorIndex -= 1;
+    }
+  }
+
+  // Success-Chance berechnen + Stein verbrauchen falls vorhanden
+  const baseChance = mergeSuccessChance(targetDef.rarity);
+  const { boost, stoneId } = specialStoneBoost();
+  if (stoneId) removeInventory(stoneId, 1);
+  const totalChance = Math.min(0.95, baseChance + boost);
+  const roll = Math.random();
+  const success = roll < totalChance;
+
+  if (success) {
+    const affixes = rollAffixes(targetDef.rarity);
+    const newEntry = { id: targetId, count: 1, upgrade: 0, affixes, justMerged: Date.now() };
+    player.inventory.push(newEntry);
+    showToast(`✓ Erfolg (${Math.round(totalChance * 100)}%): ${targetDef.name} erschaffen!`);
+    sfx.smithSuccess();
+    skillFlashes.push({ color: targetDef.color, life: 0.35, maxLife: 0.35 });
+    cameraShake = 0.3;
+    // Funken-Burst beim Schmied
+    for (let i = 0; i < 40; i += 1) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({
+        x: blacksmith.x, y: blacksmith.y,
+        vx: Math.cos(a) * (160 + Math.random() * 220),
+        vy: Math.sin(a) * (160 + Math.random() * 220),
+        life: 0.6,
+        color: i % 2 === 0 ? targetDef.color : "#fff2a8",
+        size: 4,
+      });
+    }
+  } else {
+    // Fail: 1 von 3 ursprünglichen Items überlebt
+    const survivor = items[Math.floor(Math.random() * items.length)];
+    player.inventory.push({ id: survivor.id, count: 1, upgrade: survivor.upgrade || 0, affixes: survivor.affixes ? { ...survivor.affixes } : undefined });
+    showToast(`✗ Verschmelzen misslungen (${Math.round(totalChance * 100)}% Chance). 1 ${itemDefs[survivor.id]?.name} überlebt.`);
+    sfx.smithFail();
+    skillFlashes.push({ color: "#ff5d62", life: 0.35, maxLife: 0.35 });
+    cameraShake = 0.4;
+  }
+
+  clearMergeSlots();
+  renderInventory();
+  saveCurrentCharacter();
 }
 
 function upgradeCost(nextLevel, kind) {
@@ -3713,14 +4745,24 @@ function update(dt) {
   }
 
   if (player.frostSlowTimer > 0) player.frostSlowTimer -= dt;
+  // Safe-Zone Heal-Regen
+  if (inSafeZone(player.x, player.y) && player.hp < player.maxHp && player.hp > 0) {
+    const regen = 6; // HP pro Sekunde
+    player.hp = Math.min(player.maxHp, player.hp + regen * dt);
+  }
   for (const mob of mobs) {
     mob.hitTimer = Math.max(0, mob.hitTimer - dt);
     tickStatuses(mob, dt);
     if (mob.bossDef) updateWorldBoss(mob, dt);
-    // Decoy zieht Aggro wenn da; sonst Spieler. Bei Invis Spieler ignorieren.
+    // Spieler in Safe-Zone? Mobs verlieren Aggro und entfernen sich.
     let tx = player.x, ty = player.y;
-    if (shadowDecoy) { tx = shadowDecoy.x; ty = shadowDecoy.y; }
-    else if (player.invisTimer > 0) { tx = mob.x; ty = mob.y; } // bleibt stehen
+    if (inSafeZone(player.x, player.y) && currentWorldId === "meadows") {
+      // Mob soll vom Schmied weg
+      tx = mob.x + (mob.x - blacksmith.x);
+      ty = mob.y + (mob.y - blacksmith.y);
+      mob.aggroed = false;
+    } else if (shadowDecoy) { tx = shadowDecoy.x; ty = shadowDecoy.y; }
+    else if (player.invisTimer > 0) { tx = mob.x; ty = mob.y; }
     const dx = tx - mob.x;
     const dy = ty - mob.y;
     const d = Math.hypot(dx, dy) || 1;
@@ -3754,7 +4796,7 @@ function update(dt) {
       player.hp -= mitigatedDamage;
       player.invuln = 0.5;
       floatText(player.x, player.y - 36, `-${mitigatedDamage}`, "#ff5d62");
-      if (player.hp <= 0) showToast("Du wurdest besiegt. Druecke R fuer Neustart.");
+      if (player.hp <= 0) { showToast("Du wurdest besiegt. Druecke R fuer Neustart."); sfx.death(); }
     }
   }
 
@@ -3766,13 +4808,27 @@ function update(dt) {
   for (let i = droppedItems.length - 1; i >= 0; i -= 1) {
     const entry = droppedItems[i];
     entry.bob += dt * 5;
-    if (Math.hypot(entry.x - player.x, entry.y - player.y) < 48) {
+    const dx = player.x - entry.x;
+    const dy = player.y - entry.y;
+    const d = Math.hypot(dx, dy);
+    // Loot-Magnet: ab 110px zieht es zum Spieler
+    if (d < 110 && d > 0) {
+      const lockedToOther = entry.ownerLockUntil && Date.now() < entry.ownerLockUntil && entry.owner && entry.owner !== authUser;
+      if (!lockedToOther) {
+        const pull = Math.min(280, 80 + (110 - d) * 6);
+        entry.x += (dx / d) * pull * dt;
+        entry.y += (dy / d) * pull * dt;
+      }
+    }
+    if (Math.hypot(entry.x - player.x, entry.y - player.y) < 30) {
       if (multiplayerReady && entry.serverId) {
         if (entry.ownerLockUntil && Date.now() < entry.ownerLockUntil && entry.owner && entry.owner !== authUser) continue;
         claimLoot(entry);
+        sfx.pickup();
       } else {
         addInventory(entry.id, entry.count);
         droppedItems.splice(i, 1);
+        sfx.pickup();
       }
     }
   }
@@ -3780,6 +4836,7 @@ function update(dt) {
   updateParticles(dt);
   updateProjectiles(dt);
   updateSkillFlashes(dt);
+  updateLavaPools(dt);
   updatePvpBot(dt);
   updatePet(dt);
   updateShadowDecoy(dt);
@@ -3969,6 +5026,10 @@ function talentEffect(effectKey) {
   return total;
 }
 
+function mastery(abilityId) {
+  return abilityMasteryLevel(player.talents, abilityId);
+}
+
 function spendTalent(nodeId) {
   if (!player.talentPoints || player.talentPoints <= 0) {
     showToast("Keine Talent-Punkte uebrig.");
@@ -4095,7 +5156,18 @@ function renderInventory() {
 
 function renderInventoryInto(target) {
   target.innerHTML = "";
-  const slots = 60;
+  // Min 60 Slots damit's nicht leer wirkt, wächst dynamisch mit dem Inventar
+  const slots = Math.max(60, player.inventory.length + 6);
+  const bestPower = bestPowerInInventory();
+  // Im Merge-Modus: welche ID ist bereits gewählt? Andere werden disabled.
+  const isSmithInv = target.id === "smithInventory";
+  const mergeMode = isSmithInv && smithMode === "merge";
+  let mergeLockId = null;
+  if (mergeMode) {
+    for (const s of mergeSlots) {
+      if (s !== null) { mergeLockId = player.inventory[s]?.id; break; }
+    }
+  }
   const filterFn = (entry) => {
     if (!entry) return inventoryFilter === "all";
     if (inventoryFilter === "all") return true;
@@ -4121,6 +5193,13 @@ function renderInventoryInto(target) {
     slot.classList.add(`type-${def.type}`);
     if (def.type === "weapon" && player.weaponIndex === i) slot.classList.add("equipped");
     if (def.type === "armor" && player.armorIndex === i) slot.classList.add("equipped");
+    // Merge-Modus: nicht-verschmelzbare ODER andere ID disablen
+    if (mergeMode) {
+      const mergeable = !!mergeMap[invItem.id];
+      if (!mergeable) slot.classList.add("merge-disabled");
+      else if (mergeLockId && invItem.id !== mergeLockId) slot.classList.add("merge-disabled");
+      else slot.classList.add("merge-ok");
+    }
     const attackVal = def.attack ? def.attack + (invItem.upgrade || 0) * 3 : 0;
     const defenseVal = def.defense ? def.defense + (invItem.upgrade || 0) * 4 : 0;
     const statLine = attackVal
@@ -4148,7 +5227,19 @@ function renderInventoryInto(target) {
     const affix = invItem.affixes && Object.keys(invItem.affixes).length ? `<span class="affix-dot" title="${Object.keys(invItem.affixes).length} Affixe"></span>` : "";
     const iconColor = def.color || "#f4f0df";
     slot.style.setProperty("--item-color", iconColor);
-    slot.innerHTML = `${badge}${affix}<span class="icon" style="color:${iconColor}">${def.icon}</span>${upgrade}<span class="count">${invItem.count}</span>`;
+    const power = itemPowerScore(invItem);
+    const isBest = bestPower > 0 && power === bestPower && (def.type === "weapon" || def.type === "armor");
+    if (isBest) slot.classList.add("is-best");
+    // 5s lang als "neu verschmolzen" markieren
+    if (invItem.justMerged && Date.now() - invItem.justMerged < 5000) {
+      slot.classList.add("just-merged");
+    } else if (invItem.justMerged) {
+      delete invItem.justMerged;
+    }
+    const powerBadge = (def.type === "weapon" || def.type === "armor")
+      ? `<span class="power-badge" title="Wert-Score: ${power}">${power}</span>` : "";
+    const iconHtml = svgIconFor(invItem, iconColor) || `<span class="icon" style="color:${iconColor}">${def.icon}</span>`;
+    slot.innerHTML = `${badge}${affix}${powerBadge}${iconHtml}${upgrade}<span class="count">${invItem.count}</span>`;
     target.append(slot);
   }
 }
@@ -4182,6 +5273,8 @@ function draw() {
     drawMob(mob);
   }
   drawRemotePlayers();
+  drawLavaPools();
+  drawBossCharges();
   drawCrescentWaves();
   drawWeaponTrails();
   drawProjectiles();
@@ -5141,6 +6234,27 @@ function drawSkinnedMob(mob) {
 function drawBossMob(mob) {
   const def = mob.bossDef;
   const app = def.appearance;
+  // Frost-Nova Telegraph
+  if (mob.novaCharge > 0) {
+    const novaRadius = def.abilities.frostNova.radius;
+    const pct = 1 - mob.novaCharge / (mob.novaChargeMax || 1.5);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(mob.x, mob.y, novaRadius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(224, 240, 255, ${0.06 + pct * 0.18})`;
+    ctx.fill();
+    ctx.strokeStyle = `rgba(186, 230, 253, ${0.6 + pct * 0.4})`;
+    ctx.lineWidth = 3 + pct * 4;
+    ctx.setLineDash([14, 10]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Lade-Anzeige
+    ctx.font = "bold 14px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#e0f0ff";
+    ctx.fillText(`FROST-NOVA in ${mob.novaCharge.toFixed(1)}s`, mob.x, mob.y - mob.r - 40);
+    ctx.restore();
+  }
   // Aura
   const pulse = 0.5 + Math.sin(performance.now() / 300) * 0.4;
   ctx.save();
@@ -5287,38 +6401,86 @@ function drawDroppedItems() {
 }
 
 function drawMinimap() {
-  const w = 160;
-  const h = 100;
+  const w = 180;
+  const h = 120;
   const px = canvas.clientWidth - w - 18;
   const py = 18;
   ctx.save();
-  ctx.fillStyle = "rgba(10, 14, 18, 0.72)";
+  ctx.fillStyle = "rgba(10, 14, 18, 0.82)";
   ctx.fillRect(px, py, w, h);
-  ctx.strokeStyle = "rgba(255,255,255,0.25)";
+  ctx.strokeStyle = "rgba(255,255,255,0.3)";
   ctx.lineWidth = 1;
   ctx.strokeRect(px + 0.5, py + 0.5, w - 1, h - 1);
+  // Welt-Name oben
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fff2a8";
+  ctx.fillText(currentWorld().name, px + w / 2, py + 11);
   const sx = w / world.w;
-  const sy = h / world.h;
-  ctx.fillStyle = "#f4c95d";
-  ctx.fillRect(px + blacksmith.x * sx - 2, py + blacksmith.y * sy - 2, 5, 5);
+  const sy = (h - 18) / world.h;
+  const mapY = py + 14;
+  // Portal-Marker
+  const portals = currentWorld().portals || {};
+  const portalPos = {
+    north: { x: world.w / 2, y: 90 },
+    south: { x: world.w / 2, y: world.h - 90 },
+    east: { x: world.w - 90, y: world.h / 2 },
+    west: { x: 90, y: world.h / 2 },
+  };
+  for (const [edge, portal] of Object.entries(portals)) {
+    const pos = portalPos[edge];
+    if (!pos) continue;
+    const color = getPortalColor(portal.to);
+    ctx.fillStyle = color;
+    const mx = px + pos.x * sx;
+    const my = mapY + pos.y * sy;
+    ctx.fillRect(mx - 3, my - 3, 7, 7);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(mx - 5, my - 5, 10, 10);
+  }
+  // Schmied nur in Meadows
+  if (currentWorldId === "meadows") {
+    ctx.fillStyle = "#f4c95d";
+    ctx.fillRect(px + blacksmith.x * sx - 3, mapY + blacksmith.y * sy - 3, 6, 6);
+  }
   ctx.fillStyle = "#55d7ff";
-  for (const stone of stones) ctx.fillRect(px + stone.x * sx - 2, py + stone.y * sy - 2, 4, 4);
+  for (const stone of stones) ctx.fillRect(px + stone.x * sx - 2, mapY + stone.y * sy - 2, 4, 4);
+  let bossOnMap = null;
   for (const mob of mobs) {
-    if (mob.rank === "boss") { ctx.fillStyle = "#d946ef"; ctx.fillRect(px + mob.x * sx - 3, py + mob.y * sy - 3, 6, 6); }
-    else if (mob.rank === "miniboss") { ctx.fillStyle = "#f97316"; ctx.fillRect(px + mob.x * sx - 2, py + mob.y * sy - 2, 5, 5); }
-    else { ctx.fillStyle = mob.elite ? "#c084fc" : "#ff6b6b"; ctx.fillRect(px + mob.x * sx - 1, py + mob.y * sy - 1, 2, 2); }
+    if (mob.rank === "boss") {
+      ctx.fillStyle = mob.bossDef ? "#fff2a8" : "#d946ef";
+      ctx.fillRect(px + mob.x * sx - 3, mapY + mob.y * sy - 3, 7, 7);
+      // Pulsing ring
+      const r = 4 + Math.sin(performance.now() / 200) * 2;
+      ctx.strokeStyle = "#fff2a8";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(px + mob.x * sx, mapY + mob.y * sy, r + 3, 0, Math.PI * 2);
+      ctx.stroke();
+      if (mob.bossDef) bossOnMap = mob.bossDef.name;
+    } else if (mob.rank === "miniboss") {
+      ctx.fillStyle = "#f97316";
+      ctx.fillRect(px + mob.x * sx - 2, mapY + mob.y * sy - 2, 5, 5);
+    } else {
+      ctx.fillStyle = mob.elite ? "#c084fc" : "#ff6b6b";
+      ctx.fillRect(px + mob.x * sx - 1, mapY + mob.y * sy - 1, 2, 2);
+    }
   }
   for (const remote of Object.values(remotePlayers)) {
     if (!remote) continue;
     ctx.fillStyle = remote.color || "#51d37a";
-    ctx.fillRect(px + remote.x * sx - 2, py + remote.y * sy - 2, 4, 4);
+    ctx.fillRect(px + remote.x * sx - 2, mapY + remote.y * sy - 2, 4, 4);
   }
   ctx.fillStyle = "#ffffff";
-  ctx.fillRect(px + player.x * sx - 2, py + player.y * sy - 2, 5, 5);
-  ctx.font = "bold 10px sans-serif";
-  ctx.textAlign = "left";
-  ctx.fillStyle = isHost ? "#51d37a" : "#9faebd";
-  ctx.fillText(multiplayerReady ? (isHost ? `HOST: ${authUser}` : `Host: ${currentHostName || "—"}`) : "Solo", px + 4, py + h - 6);
+  ctx.fillRect(px + player.x * sx - 2, mapY + player.y * sy - 2, 5, 5);
+  // Boss-Banner
+  if (bossOnMap) {
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = "#fff2a8";
+    ctx.fillText(`▼ ${bossOnMap}`, px + w / 2, py + h + 12);
+  }
   ctx.restore();
 }
 
@@ -5381,7 +6543,7 @@ function restart() {
   renderInventory();
   const newLevel = player.level;
   if (oldLevel > newLevel) {
-    showToast(`Tod: Level ${oldLevel} → ${newLevel}, Inventar verloren. Respawn in Pugna-Wiesen.`);
+    showToast(`Tod: Level ${oldLevel} → ${newLevel}. Inventar bleibt. Respawn in Pugna-Wiesen.`);
   } else {
     showToast(`Respawn in Pugna-Wiesen.`);
   }
@@ -5390,16 +6552,18 @@ function restart() {
 function resetProgressAfterDeath() {
   const classId = player.classId;
   const classDef = getClassDef(classId);
-  const starter = classDef.starterWeapon || "rust_sword";
   const previousLevel = player.level || 1;
   const previousTalents = { ...(player.talents || {}) };
   const previousTalentPoints = player.talentPoints || 0;
-  // Level wird halbiert (min 1). Stats werden auf das neue Level neu aufgebaut.
-  const newLevel = Math.max(1, Math.floor(previousLevel / 2));
-  // Goldverlust: 60% bleiben
-  const keptGold = Math.floor((player.gold || 0) * 0.4);
+  const previousInventory = (player.inventory || []).map((e) => ({ ...e }));
+  const previousWeaponIndex = player.weaponIndex;
+  const previousArmorIndex = player.armorIndex;
+  const previousWeapon = player.weapon;
+  // Nur 1 Level verlieren (min 1)
+  const newLevel = Math.max(1, previousLevel - 1);
+  // Gold halbiert
+  const keptGold = Math.floor((player.gold || 0) * 0.5);
   applyClass(classId, false);
-  // Stats anhand der neuen Level neu skalieren
   for (let i = 1; i < newLevel; i += 1) {
     player.maxHp += classDef.stats.hpPerLevel || 14;
     player.baseAttack += classDef.stats.attackPerLevel || 1.6;
@@ -5408,37 +6572,31 @@ function resetProgressAfterDeath() {
   player.xp = 0;
   player.nextXp = Math.floor(50 * Math.pow(1.35, newLevel - 1));
   player.gold = keptGold;
-  player.mobsKilled = 0;
-  player.stonesKilled = 0;
-  // Talente bleiben erhalten
+  // Talente komplett erhalten
   player.talents = previousTalents;
   player.talentPoints = previousTalentPoints;
-  // Talent-Effekte fuer maxHp/armor manuell wieder anwenden (applyClass setzt sie zurueck)
   const tree = getTalentTree(classId);
   for (const node of tree) {
     const cnt = previousTalents[node.id] || 0;
     if (!cnt) continue;
-    if (node.effect === "maxHpBonus") {
-      player.maxHp += node.per * cnt;
-    }
-    if (node.effect === "armorBonus") {
-      player.armorLevel = (player.armorLevel || 0) + node.per * cnt;
-    }
+    if (node.effect === "maxHpBonus") player.maxHp += node.per * cnt;
+    if (node.effect === "armorBonus") player.armorLevel = (player.armorLevel || 0) + node.per * cnt;
   }
-  player.weapon = starter;
-  player.weaponIndex = 1;
-  player.armorIndex = 2;
-  player.inventory = [
-    item("health_potion", 3),
-    { id: starter, count: 1, upgrade: 0 },
-    item("leather_armor", 1),
-  ];
+  // Inventar bleibt komplett
+  player.inventory = previousInventory;
+  player.weapon = previousWeapon;
+  player.weaponIndex = previousWeaponIndex;
+  player.armorIndex = previousArmorIndex;
   saveCurrentCharacter();
 }
 
 function loop(now) {
-  const dt = Math.min((now - last) / 1000, 0.05);
+  let dt = Math.min((now - last) / 1000, 0.05);
   last = now;
+  if (hitStopTimer > 0) {
+    hitStopTimer -= dt;
+    dt = dt * 0.05; // Hit-Stop: 95% Slowdown
+  }
   update(dt);
   draw();
   requestAnimationFrame(loop);

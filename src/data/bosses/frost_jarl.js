@@ -29,32 +29,39 @@ export const frostJarl = {
   },
   // Abilities: phasenabhaengig
   abilities: {
-    // Phase 1 (>66% HP): Frost-Speer-Salve alle 5s
+    // Phase 1 (>66% HP)
     frostSpear: {
+      phase: 1,
       cooldown: 5,
-      damage: 0.85, // multiplier auf bossDamage
+      damage: 0.85,
       speed: 360,
       pierce: 3,
       color: "#bae6fd",
       glow: "rgba(125, 211, 252, 0.55)",
-      hint: "3 Eis-Speere in Richtung Spieler",
+      hint: "Drei Eis-Speere als Fächer in Richtung Spieler",
+      counter: "Seitlich ausweichen oder über die Strecke laufen",
     },
-    // Phase 2 (<66% HP): Frost-Nova um sich rum, 10s CD
+    // Phase 2 (<66% HP) — mit Telegraph
     frostNova: {
-      cooldown: 10,
-      damage: 1.4,
+      phase: 2,
+      cooldown: 11,
+      damage: 0.85, // war 1.4 — viel zu hart
       radius: 280,
       color: "#e0f0ff",
-      hint: "Schockwelle + Verlangsamung 3s",
-      slowDuration: 3,
+      hint: "Lädt 1.5s → Schockwelle + Verlangsamung 2s",
+      counter: "Während des Ladens (weißer Ring) aus dem Radius rennen",
+      telegraphDuration: 1.5,
+      slowDuration: 2,
     },
-    // Phase 3 (<33% HP): Add-Spawn alle 12s + verstaerkte Speere
+    // Phase 3 (<33% HP)
     summonShards: {
+      phase: 3,
       cooldown: 12,
       count: 4,
       addStats: { hp: 80, damage: 24, speed: 160 },
       addColor: "#7dd3fc",
-      hint: "Beschwoert 4 Frost-Splitter",
+      hint: "Beschwört 4 Frost-Splitter (mob-tier)",
+      counter: "Adds zuerst töten, sonst werden sie überwältigend",
     },
   },
   drops: {
