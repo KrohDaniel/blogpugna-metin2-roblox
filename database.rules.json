@@ -6,13 +6,43 @@
       "users": {
         "$username": {
           ".read": "$username.matches(/^[a-z0-9_]{3,18}$/)",
-          ".write": "!data.exists() && $username.matches(/^[a-z0-9_]{3,18}$/)",
-          ".validate": "newData.hasChildren(['passwordHash', 'createdAt'])",
+          ".write": "$username.matches(/^[a-z0-9_]{3,18}$/) && (!data.exists() || newData.exists())",
           "passwordHash": {
             ".validate": "newData.isString() && newData.val().matches(/^[a-f0-9]{64}$/)"
           },
           "createdAt": {
             ".validate": "newData.isNumber()"
+          },
+          "characters": {
+            "$charId": {
+              ".validate": "$charId.matches(/^c_[0-9]{1,20}_[a-z0-9]{1,6}$/) && newData.hasChildren(['name', 'classId', 'level'])",
+              "id": { ".validate": "newData.isString() && newData.val().length <= 32" },
+              "name": { ".validate": "newData.isString() && newData.val().length <= 24" },
+              "classId": { ".validate": "newData.isString() && newData.val().length <= 24" },
+              "level": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 200" },
+              "xp": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "nextXp": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "gold": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "hp": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "maxHp": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "baseAttack": { ".validate": "newData.isNumber()" },
+              "attackBonus": { ".validate": "newData.isNumber()" },
+              "armorLevel": { ".validate": "newData.isNumber()" },
+              "mobsKilled": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "stonesKilled": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "weapon": { ".validate": "newData.isString() && newData.val().length <= 32" },
+              "weaponIndex": { ".validate": "newData.isNumber()" },
+              "armorIndex": { ".validate": "newData.isNumber()" },
+              "talentPoints": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+              "activePet": { ".validate": "newData.isString() && newData.val().length <= 32 || !newData.exists()" },
+              "trainerLastReset": { ".validate": "newData.isNumber()" },
+              "createdAt": { ".validate": "newData.isNumber()" },
+              "lastPlayedAt": { ".validate": "newData.isNumber()" },
+              "inventory": { },
+              "talents": { },
+              "pets": { },
+              "courierState": { }
+            }
           },
           "$other": {
             ".validate": false

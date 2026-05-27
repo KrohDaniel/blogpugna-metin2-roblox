@@ -2146,6 +2146,66 @@ function saveCharacterList(list, username = authUser) {
   localStorage.setItem(charsKey(username), JSON.stringify(list));
 }
 
+// Cloud-Sync: lädt alle Chars für den eingeloggten User aus Firebase
+async function fetchCharactersFromCloud(username = authUser) {
+  if (!username) return [];
+  const api = firebaseApi();
+  if (!api) return [];
+  try {
+    const ref = api.ref(api.database, `blocpugna/users/${username}/characters`);
+    const snap = await api.get(ref);
+    const val = snap.val();
+    if (!val) return [];
+    return Object.values(val).map((c) => ({ ...c, inventory: c.inventory || [] }));
+  } catch (e) {
+    console.warn("fetchCharactersFromCloud failed", e);
+    return [];
+  }
+}
+
+// Cloud-Sync: lädt + merged mit localStorage (cloud gewinnt bei lastPlayedAt-Konflikt)
+async function syncCharactersFromCloud(username = authUser) {
+  if (!username) return loadCharacters(username);
+  const cloud = await fetchCharactersFromCloud(username);
+  const local = loadCharacters(username);
+  // Merge: für jeden charId nehme die neuere Version
+  const byId = new Map();
+  for (const c of local) byId.set(c.id, c);
+  for (const c of cloud) {
+    const ex = byId.get(c.id);
+    if (!ex || (c.lastPlayedAt || 0) >= (ex.lastPlayedAt || 0)) byId.set(c.id, c);
+  }
+  const merged = [...byId.values()];
+  saveCharacterList(merged, username);
+  return merged;
+}
+
+// Save zu Cloud + localStorage
+async function saveCharacterToCloud(char, username = authUser) {
+  if (!username || !char?.id) return;
+  const api = firebaseApi();
+  if (!api) return;
+  try {
+    const ref = api.ref(api.database, `blocpugna/users/${username}/characters/${char.id}`);
+    // Sanitize: Firebase mag keine undefined values
+    const clean = JSON.parse(JSON.stringify(char));
+    await api.set(ref, clean);
+  } catch (e) {
+    console.warn("saveCharacterToCloud failed", e);
+  }
+}
+
+async function deleteCharacterFromCloud(charId, username = authUser) {
+  if (!username || !charId) return;
+  const api = firebaseApi();
+  if (!api) return;
+  try {
+    await api.remove(api.ref(api.database, `blocpugna/users/${username}/characters/${charId}`));
+  } catch (e) {
+    console.warn("deleteCharacterFromCloud failed", e);
+  }
+}
+
 function serializeCurrentCharacter() {
   if (!currentCharId) return null;
   return {
@@ -2186,6 +2246,8 @@ function saveCurrentCharacter() {
   if (idx >= 0) list[idx] = snap;
   else list.push(snap);
   saveCharacterList(list);
+  // Fire-and-forget Cloud-Save
+  saveCharacterToCloud(snap);
 }
 
 function applyCharacter(char) {
@@ -2268,6 +2330,7 @@ function deleteCharacter(charId) {
   const list = loadCharacters().filter((c) => c.id !== charId);
   saveCharacterList(list);
   if (currentCharId === charId) currentCharId = null;
+  deleteCharacterFromCloud(charId);
   renderCharList();
 }
 
@@ -2309,11 +2372,16 @@ function escapeHtml(str) {
 
 function showCharacterSelect() {
   if (!ui.charSelectOverlay) return;
-  if (ui.charSelectUser) ui.charSelectUser.textContent = `Eingeloggt als ${authUser}`;
+  if (ui.charSelectUser) ui.charSelectUser.textContent = `Eingeloggt als ${authUser} · synce...`;
   renderCharList();
   ui.charSelectOverlay.classList.remove("hidden");
   ui.charCreateOverlay?.classList.add("hidden");
   ui.classOverlay?.classList.add("hidden");
+  // Cloud-Sync nachladen — wenn das durch ist, Liste neu rendern
+  syncCharactersFromCloud(authUser).then(() => {
+    if (ui.charSelectUser) ui.charSelectUser.textContent = `Eingeloggt als ${authUser}`;
+    renderCharList();
+  });
 }
 
 function hideCharacterSelect() {
