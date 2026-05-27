@@ -2,9 +2,12 @@
 <html lang="de">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=mechanics-1" />
+    <link rel="stylesheet" href="styles.css?v=mobile-1" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -114,6 +117,20 @@
       <section class="game-area" aria-label="Blocpugna Spielbereich">
         <canvas id="game" width="1280" height="720"></canvas>
         <div id="toast" class="toast" aria-live="polite"></div>
+
+        <!-- Mobile Touch Controls -->
+        <div id="touchControls" class="touch-controls" aria-hidden="true">
+          <div id="touchJoystick" class="touch-joystick">
+            <div id="touchJoyKnob" class="touch-joy-knob"></div>
+          </div>
+          <div class="touch-skill-stack">
+            <button id="touchAttack" type="button" class="touch-skill atk" aria-label="Angriff">⚔</button>
+            <button id="touchSkillQ" type="button" class="touch-skill q" aria-label="Skill Q">Q</button>
+            <button id="touchSkillE" type="button" class="touch-skill e" aria-label="Skill E">E</button>
+            <button id="touchSkillR" type="button" class="touch-skill r" aria-label="Ulti">R</button>
+            <button id="touchPotion" type="button" class="touch-skill pot" aria-label="Trank">🧪</button>
+          </div>
+        </div>
 
         <div class="hud-toggles" aria-label="Panels oeffnen">
           <button id="toggleInv" type="button" data-overlay="invOverlay"><kbd>I</kbd><span>Inventar</span></button>
@@ -416,7 +433,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=mechanics-1"></script>
-    <script type="module" src="src/main.js?v=mechanics-1"></script>
+    <script type="module" src="firebase-config.js?v=mobile-1"></script>
+    <script type="module" src="src/main.js?v=mobile-1"></script>
   </body>
 </html>

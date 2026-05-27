@@ -1478,6 +1478,116 @@ canvas.addEventListener("mousemove", (event) => {
 });
 
 canvas.addEventListener("mousedown", swing);
+
+// ===== Mobile / Touch Controls =====
+const isTouchDevice = ("ontouchstart" in window) || (navigator.maxTouchPoints > 0);
+if (isTouchDevice) document.body.classList.add("is-touch");
+
+// Virtuelle Tasten-Map fuer den Joystick (faked WASD)
+const joyKeys = { w: false, a: false, s: false, d: false };
+function applyJoyKeys() {
+  for (const k of Object.keys(joyKeys)) {
+    if (joyKeys[k]) keys.add(k);
+    else keys.delete(k);
+  }
+}
+
+const joyEl = document.getElementById("touchJoystick");
+const joyKnob = document.getElementById("touchJoyKnob");
+let joyActive = false;
+let joyStartX = 0, joyStartY = 0;
+const JOY_RADIUS = 50;
+
+function setJoyKnob(dx, dy) {
+  joyKnob.style.transform = `translate(${dx}px, ${dy}px)`;
+}
+
+function joyUpdateDir(dx, dy) {
+  const len = Math.hypot(dx, dy);
+  const clampedX = len > JOY_RADIUS ? (dx / len) * JOY_RADIUS : dx;
+  const clampedY = len > JOY_RADIUS ? (dy / len) * JOY_RADIUS : dy;
+  setJoyKnob(clampedX, clampedY);
+  // Threshold um Wackeln zu vermeiden
+  const thresh = 12;
+  joyKeys.w = clampedY < -thresh;
+  joyKeys.s = clampedY > thresh;
+  joyKeys.a = clampedX < -thresh;
+  joyKeys.d = clampedX > thresh;
+  applyJoyKeys();
+}
+
+if (joyEl) {
+  joyEl.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    const rect = joyEl.getBoundingClientRect();
+    joyStartX = rect.left + rect.width / 2;
+    joyStartY = rect.top + rect.height / 2;
+    joyActive = true;
+    joyUpdateDir(t.clientX - joyStartX, t.clientY - joyStartY);
+  }, { passive: false });
+  joyEl.addEventListener("touchmove", (e) => {
+    if (!joyActive) return;
+    e.preventDefault();
+    const t = e.changedTouches[0];
+    joyUpdateDir(t.clientX - joyStartX, t.clientY - joyStartY);
+  }, { passive: false });
+  const endJoy = (e) => {
+    if (!joyActive) return;
+    e.preventDefault();
+    joyActive = false;
+    joyKeys.w = joyKeys.a = joyKeys.s = joyKeys.d = false;
+    applyJoyKeys();
+    setJoyKnob(0, 0);
+  };
+  joyEl.addEventListener("touchend", endJoy, { passive: false });
+  joyEl.addEventListener("touchcancel", endJoy, { passive: false });
+}
+
+// Touch-Skill-Buttons
+function bindTouchSkill(id, handler) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener("touchstart", (e) => { e.preventDefault(); handler(); }, { passive: false });
+  el.addEventListener("click", handler);
+}
+bindTouchSkill("touchAttack", () => swing({}));
+bindTouchSkill("touchSkillQ", () => useAbility(primaryAbilityId()));
+bindTouchSkill("touchSkillE", () => useAbility(secondaryAbilityId()));
+bindTouchSkill("touchSkillR", () => useAbility(ultimateAbilityId()));
+bindTouchSkill("touchPotion", () => usePotion());
+
+// Canvas-Tap: bestimmt Blickrichtung fuer den naechsten Auto-Attack (nur im rechten Bereich)
+canvas.addEventListener("touchstart", (e) => {
+  if (!isTouchDevice) return;
+  const t = e.changedTouches[0];
+  const rect = canvas.getBoundingClientRect();
+  const x = t.clientX - rect.left;
+  const y = t.clientY - rect.top;
+  // Nur rechte Bildschirmhaelfte: setzt Maus-Pointer (Aim) — Skill-Buttons sind ohnehin auf der rechten Seite
+  if (x > rect.width * 0.4) {
+    e.preventDefault();
+    mouse.x = x;
+    mouse.y = y;
+  }
+}, { passive: false });
+
+// Doppel-Tap zum Angreifen (anywhere ausser ueber UI)
+let lastTap = 0;
+canvas.addEventListener("touchend", (e) => {
+  if (!isTouchDevice) return;
+  const now = performance.now();
+  if (now - lastTap < 280) swing({});
+  lastTap = now;
+}, { passive: false });
+
+// Verhindere Browser-Gesten (Zoom, Pull-to-Refresh) waehrend des Spiels
+document.body.addEventListener("touchmove", (e) => {
+  // Overlays/Panels sollen scrollen koennen
+  const el = e.target;
+  if (el && (el.closest("[class*='overlay']") || el.closest(".inv-grid") || el.closest(".codex-body") || el.closest(".talents-list"))) return;
+  e.preventDefault();
+}, { passive: false });
 ui.skillPrimary.addEventListener("click", () => useAbility(primaryAbilityId()));
 ui.skillSecondary.addEventListener("click", () => useAbility(secondaryAbilityId()));
 ui.skillUltimate?.addEventListener("click", () => useAbility(ultimateAbilityId()));

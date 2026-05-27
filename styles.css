@@ -2792,3 +2792,109 @@ kbd {
   .hud-toggles button span { display: none; }
   #invOverlay .inventory { grid-template-columns: repeat(5, 1fr); }
 }
+
+/* ===== Mobile Touch Controls ===== */
+.touch-controls {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  display: none;
+  z-index: 50;
+}
+body.is-touch .touch-controls { display: block; }
+
+.touch-joystick {
+  pointer-events: auto;
+  position: absolute;
+  left: 18px;
+  bottom: 18px;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, rgba(255,255,255,0.06), rgba(0,0,0,0.45));
+  border: 2px solid rgba(255,255,255,0.18);
+  touch-action: none;
+}
+.touch-joy-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, #f5d042, #ec4899);
+  box-shadow: 0 0 18px rgba(236, 72, 153, 0.55);
+  transition: transform 0.05s linear;
+  pointer-events: none;
+}
+
+.touch-skill-stack {
+  position: absolute;
+  right: 14px;
+  bottom: 18px;
+  display: grid;
+  grid-template-columns: repeat(2, 70px);
+  grid-template-rows: repeat(3, 70px);
+  gap: 8px;
+  pointer-events: none;
+}
+.touch-skill {
+  pointer-events: auto;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-radius: 50%;
+  background: rgba(15, 18, 28, 0.7);
+  color: #f4f0df;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  transition: transform 0.08s ease;
+}
+.touch-skill:active { transform: scale(0.92); }
+.touch-skill.atk { background: linear-gradient(135deg, #ef4444, #b91c1c); grid-row: 1; grid-column: 1 / span 2; height: 56px; border-radius: 28px; font-size: 26px; }
+.touch-skill.q { background: linear-gradient(135deg, #6366f1, #4338ca); }
+.touch-skill.e { background: linear-gradient(135deg, #10b981, #047857); }
+.touch-skill.r { background: linear-gradient(135deg, #f59e0b, #c2410c); }
+.touch-skill.pot { background: linear-gradient(135deg, #ec4899, #be185d); grid-row: 3; grid-column: 1 / span 2; height: 50px; border-radius: 25px; font-size: 22px; }
+
+/* Mobile Responsive Layout */
+@media (pointer: coarse), (max-width: 820px) {
+  html, body {
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+  body.is-touch .bottom-bar { display: none; }
+  body.is-touch .hud-toggles { gap: 4px; }
+  body.is-touch .hud-toggles button { padding: 4px 6px; font-size: 11px; }
+  body.is-touch .hud-toggles button kbd { display: none; }
+  body.is-touch .game-area { width: 100%; height: 100vh; }
+  body.is-touch #game { width: 100%; height: 100vh; object-fit: cover; }
+  body.is-touch header.top-bar { font-size: 12px; }
+  body.is-touch .quest, body.is-touch .top-bar > div:not(:first-child):not(.hp):not(.bar-strip) { display: none; }
+}
+
+/* Portrait warning */
+@media (orientation: portrait) and (max-width: 820px) {
+  body.is-touch::before {
+    content: "Bitte Geraet drehen 🔄";
+    position: fixed;
+    inset: 0;
+    background: rgba(10, 14, 18, 0.92);
+    color: #f4f0df;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: 700;
+    z-index: 9999;
+  }
+}
