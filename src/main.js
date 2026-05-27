@@ -161,6 +161,8 @@ let portalCooldown = 0;
 let preArenaWorldId = "meadows";
 let uiThrottle = 0;
 let hitStopTimer = 0;
+let bossDefeatCinematic = null; // { name, life, maxLife }
+let splashScreen = { life: 2.5, shown: localStorage.getItem("blocpugnaSplashSeen") === "1" };
 const dyingMobs = []; // { x, y, color, scale, life, maxLife, rot }
 let comboCount = 0;
 let comboTimer = 0;
@@ -3197,6 +3199,82 @@ function drawLavaPools() {
   }
 }
 
+function triggerBossDefeatCinematic(mob) {
+  bossDefeatCinematic = {
+    name: mob.bossDef.name,
+    title: mob.bossDef.title || "Welt-Boss",
+    life: 2.8,
+    maxLife: 2.8,
+    color: mob.bossDef.appearance.head,
+    x: mob.x, y: mob.y,
+  };
+  hitStopTimer = Math.max(hitStopTimer, 0.4);
+}
+
+function drawBossDefeatCinematic() {
+  if (!bossDefeatCinematic) return;
+  const c = bossDefeatCinematic;
+  const pct = c.life / c.maxLife;
+  const phase = 1 - pct; // 0..1
+  // Dunkle Vignette
+  ctx.save();
+  ctx.fillStyle = `rgba(0, 0, 0, ${Math.min(0.55, phase * 0.7)})`;
+  ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+  // Goldener Banner-Effekt
+  const cy = canvas.clientHeight / 2;
+  ctx.fillStyle = `rgba(244, 201, 93, ${Math.min(0.18, phase * 0.4)})`;
+  ctx.fillRect(0, cy - 80, canvas.clientWidth, 160);
+  // Text
+  ctx.font = "bold 56px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = c.color;
+  ctx.shadowColor = c.color;
+  ctx.shadowBlur = 30;
+  const slide = phase < 0.5 ? phase * 2 : 1 - (phase - 0.5) * 2;
+  const offsetX = (1 - slide) * 200;
+  ctx.fillText("BESIEGT", canvas.clientWidth / 2 + offsetX, cy - 8);
+  ctx.font = "bold 26px sans-serif";
+  ctx.fillStyle = "#fff2a8";
+  ctx.shadowBlur = 16;
+  ctx.fillText(c.name, canvas.clientWidth / 2 - offsetX, cy + 32);
+  ctx.shadowBlur = 0;
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillStyle = "#cbd5e1";
+  ctx.fillText(c.title, canvas.clientWidth / 2 - offsetX, cy + 56);
+  ctx.restore();
+}
+
+function drawSplashScreen() {
+  if (splashScreen.shown || splashScreen.life <= 0) return;
+  const t = splashScreen.life / 2.5;
+  ctx.save();
+  ctx.fillStyle = `rgba(8, 11, 15, ${Math.min(1, t * 1.2)})`;
+  ctx.fillRect(0, 0, canvas.clientWidth, canvas.clientHeight);
+  // Logo: BLOCPUGNA
+  const cx = canvas.clientWidth / 2;
+  const cy = canvas.clientHeight / 2;
+  const phase = 1 - t;
+  const scale = 0.7 + Math.min(1, phase * 2) * 0.5;
+  ctx.font = `bold ${64 * scale}px sans-serif`;
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#f4c95d";
+  ctx.shadowColor = "#f4c95d";
+  ctx.shadowBlur = 30;
+  ctx.fillText("BLOCPUGNA", cx, cy);
+  ctx.shadowBlur = 0;
+  ctx.font = "bold 14px sans-serif";
+  ctx.fillStyle = "#cbd5e1";
+  ctx.fillText("Blockig. Tödlich. Episch.", cx, cy + 36);
+  // Partikel-Aura um Logo
+  for (let i = 0; i < 5; i += 1) {
+    const a = (performance.now() / 600 + i * Math.PI * 2 / 5) % (Math.PI * 2);
+    const r = 120 + phase * 40;
+    ctx.fillStyle = `rgba(244, 201, 93, ${0.6 - phase * 0.6})`;
+    ctx.fillRect(cx + Math.cos(a) * r - 3, cy + Math.sin(a) * r - 3, 6, 6);
+  }
+  ctx.restore();
+}
+
 function drawComboHud() {
   if (comboCount < 2) return;
   const x = canvas.clientWidth / 2;
@@ -4092,6 +4170,8 @@ function damageMob(mob, amount, options = {}) {
       handleWorldBossDrop(mob);
       cameraShake = 0.7;
       skillFlashes.push({ color: "#ffe0a0", life: 0.5, maxLife: 0.5 });
+      // Boss-Defeat-Cinematic
+      triggerBossDefeatCinematic(mob);
       // Pet unlocken
       const petDef = mob.bossDef.pet;
       if (petDef) {
@@ -5301,6 +5381,17 @@ function update(dt) {
   if (player.hitFlash > 0) player.hitFlash = Math.max(0, player.hitFlash - dt);
   updateInsectSwarm(dt);
   updateWeather(dt);
+  if (bossDefeatCinematic) {
+    bossDefeatCinematic.life -= dt;
+    if (bossDefeatCinematic.life <= 0) bossDefeatCinematic = null;
+  }
+  if (!splashScreen.shown && splashScreen.life > 0) {
+    splashScreen.life -= dt;
+    if (splashScreen.life <= 0) {
+      splashScreen.shown = true;
+      localStorage.setItem("blocpugnaSplashSeen", "1");
+    }
+  }
   // Bär-Form Tick
   if (player.bearForm > 0) {
     player.bearForm -= dt;
@@ -5775,6 +5866,8 @@ function draw() {
   drawLowHpVignette();
   drawMinimap();
   drawComboHud();
+  drawBossDefeatCinematic();
+  drawSplashScreen();
 
   if (player.hp <= 0) drawDeathScreen();
 }
