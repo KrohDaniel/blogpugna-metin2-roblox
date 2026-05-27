@@ -4934,6 +4934,12 @@ function tickStatuses(target, dt) {
           // killed by DoT — credit to player
           target.dmgBy = target.dmgBy || {};
           target.dmgBy[authUser || "player"] = (target.dmgBy[authUser || "player"] || 0) + tickDmg;
+          // Mob auch wirklich sterben lassen (sofern es ein Mob ist, nicht der Spieler)
+          if (mobs.includes(target)) {
+            if (multiplayerReady && isHost) hostKillMob(target);
+            else if (!multiplayerReady) killMob(target);
+            // Non-host clients: warten auf Snapshot vom Host — sonst Duplikate
+          }
         }
       }
     }
@@ -4980,56 +4986,61 @@ function damageMob(mob, amount, options = {}) {
     return;
   }
   mob.hp -= amount;
-  if (mob.hp <= 0) {
-    const index = mobs.indexOf(mob);
-    if (index >= 0) mobs.splice(index, 1);
-    // Sterbe-Animation
-    dyingMobs.push({
-      x: mob.x, y: mob.y,
-      color: mob.color || "#b34d54",
-      scale: mob.scale || 1,
-      skin: mob.skin || null,
-      bossDef: mob.bossDef || null,
-      life: 0.5,
-      maxLife: 0.5,
-      rot: (Math.random() - 0.5) * 6,
-    });
-    // Combo
-    comboCount += 1;
-    comboTimer = 2.5;
-    player.mobsKilled += 1;
-    trackCourierKill();
-    gainXp(mob.xp);
-    if (mob.bossDef) {
-      handleWorldBossDrop(mob);
-      cameraShake = 0.7;
-      skillFlashes.push({ color: "#ffe0a0", life: 0.5, maxLife: 0.5 });
-      // Boss-Defeat-Cinematic
-      triggerBossDefeatCinematic(mob);
-      // Pet unlocken
-      const petDef = mob.bossDef.pet;
-      if (petDef) {
-        player.pets = player.pets || {};
-        if (!player.pets[mob.bossDef.id]) {
-          player.pets[mob.bossDef.id] = { bossId: mob.bossDef.id, unlockedAt: Date.now() };
-          showToast(`${petDef.name} folgt dir jetzt! Schalte ihn im Charakter-Menü an/aus.`);
-        }
-        player.activePet = mob.bossDef.id;
-        initPetRuntime();
-        saveCurrentCharacter();
+  if (mob.hp <= 0) killMob(mob);
+}
+
+// Zentralisiert die Mob-Sterbe-Logik. Wird aus damageMob() UND aus DoT-Ticks
+// (tickStatuses) UND confusion-Attacks gerufen, damit Mobs auch durch Gift,
+// Brand und Charm-vs-Mob-Schaden korrekt sterben (vorher Bug: hp blieb auf 0).
+function killMob(mob) {
+  if (!mob || mob._dead) return;
+  mob._dead = true;
+  const index = mobs.indexOf(mob);
+  if (index >= 0) mobs.splice(index, 1);
+  // Sterbe-Animation
+  dyingMobs.push({
+    x: mob.x, y: mob.y,
+    color: mob.color || "#b34d54",
+    scale: mob.scale || 1,
+    skin: mob.skin || null,
+    bossDef: mob.bossDef || null,
+    life: 0.5,
+    maxLife: 0.5,
+    rot: (Math.random() - 0.5) * 6,
+  });
+  // Combo
+  comboCount += 1;
+  comboTimer = 2.5;
+  player.mobsKilled += 1;
+  trackCourierKill();
+  gainXp(mob.xp);
+  if (mob.bossDef) {
+    handleWorldBossDrop(mob);
+    cameraShake = 0.7;
+    skillFlashes.push({ color: "#ffe0a0", life: 0.5, maxLife: 0.5 });
+    triggerBossDefeatCinematic(mob);
+    const petDef = mob.bossDef.pet;
+    if (petDef) {
+      player.pets = player.pets || {};
+      if (!player.pets[mob.bossDef.id]) {
+        player.pets[mob.bossDef.id] = { bossId: mob.bossDef.id, unlockedAt: Date.now() };
+        showToast(`${petDef.name} folgt dir jetzt! Schalte ihn im Charakter-Menü an/aus.`);
       }
-    } else {
-      dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"));
+      player.activePet = mob.bossDef.id;
+      initPetRuntime();
+      saveCurrentCharacter();
     }
-    burst(mob.x, mob.y, mob.color || (mob.elite ? "#c084fc" : "#ff6b6b"), mob.rank === "boss" ? 90 : mob.rank === "miniboss" ? 42 : 24);
-    if (mob.bossDef) showToast(mob.bossDef.defeatToast || `${mob.name} besiegt.`);
-    else if (mob.rank === "boss") showToast(`${mob.name} besiegt: Boss-Loot liegt am Boden.`);
-    else if (mob.rank === "miniboss") showToast(`${mob.name} besiegt: starker Loot liegt am Boden.`);
-    setTimeout(() => {
-      const point = randomPointAwayFromPlayer(680);
-      spawnMob(point.x, point.y, Math.random() < 0.24 ? "elite" : "mob");
-    }, 850);
+  } else {
+    dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"));
   }
+  burst(mob.x, mob.y, mob.color || (mob.elite ? "#c084fc" : "#ff6b6b"), mob.rank === "boss" ? 90 : mob.rank === "miniboss" ? 42 : 24);
+  if (mob.bossDef) showToast(mob.bossDef.defeatToast || `${mob.name} besiegt.`);
+  else if (mob.rank === "boss") showToast(`${mob.name} besiegt: Boss-Loot liegt am Boden.`);
+  else if (mob.rank === "miniboss") showToast(`${mob.name} besiegt: starker Loot liegt am Boden.`);
+  setTimeout(() => {
+    const point = randomPointAwayFromPlayer(680);
+    spawnMob(point.x, point.y, Math.random() < 0.24 ? "elite" : "mob");
+  }, 850);
 }
 
 function damageStone(stone, amount) {
@@ -6156,10 +6167,14 @@ function update(dt) {
           bestTarget.hp -= dmg;
           bestTarget.hitTimer = 0.08;
           floatText(bestTarget.x, bestTarget.y - 30, `-${dmg}`, "#f472b6");
-          // Kill-Credit dem Lyra-Spieler
-          if (bestTarget.hp <= 0 && mob.confusedBy) {
-            bestTarget.dmgBy = bestTarget.dmgBy || {};
-            bestTarget.dmgBy[mob.confusedBy] = (bestTarget.dmgBy[mob.confusedBy] || 0) + dmg;
+          // Kill-Credit dem Lyra-Spieler + tatsaechlich sterben lassen
+          if (bestTarget.hp <= 0) {
+            if (mob.confusedBy) {
+              bestTarget.dmgBy = bestTarget.dmgBy || {};
+              bestTarget.dmgBy[mob.confusedBy] = (bestTarget.dmgBy[mob.confusedBy] || 0) + dmg;
+            }
+            if (multiplayerReady && isHost) hostKillMob(bestTarget);
+            else if (!multiplayerReady) killMob(bestTarget);
           }
           mob.attackTelegraph = 0.18;
         }
