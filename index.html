@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=dot-kill-fix" />
+    <link rel="stylesheet" href="styles.css?v=mobile-3" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -117,6 +117,25 @@
       <section class="game-area" aria-label="Blocpugna Spielbereich">
         <canvas id="game" width="1280" height="720"></canvas>
         <div id="toast" class="toast" aria-live="polite"></div>
+
+        <!-- Mobile HUD-Overlay (HP + XP + Stats, immer sichtbar auf Touch) -->
+        <div id="mobileHud" class="mobile-hud" aria-hidden="true">
+          <div class="mob-hud-row">
+            <span class="mob-hud-label">HP</span>
+            <div class="mob-hud-bar"><span id="mobHpBar"></span></div>
+            <strong id="mobHpText">100/100</strong>
+          </div>
+          <div class="mob-hud-row">
+            <span class="mob-hud-label">XP</span>
+            <div class="mob-hud-bar xp"><span id="mobXpBar"></span></div>
+            <strong id="mobLvl">Lv 1</strong>
+          </div>
+          <div class="mob-hud-row stats">
+            <span class="mob-hud-stat">💰 <strong id="mobGold">0</strong></span>
+            <span class="mob-hud-stat">⚔ <strong id="mobAtk">8</strong></span>
+            <span class="mob-hud-stat">🛡 <strong id="mobDef">0</strong></span>
+          </div>
+        </div>
 
         <!-- Mobile Touch Controls -->
         <div id="touchControls" class="touch-controls" aria-hidden="true">
@@ -447,7 +466,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=dot-kill-fix"></script>
-    <script type="module" src="src/main.js?v=dot-kill-fix"></script>
+    <script type="module" src="firebase-config.js?v=mobile-3"></script>
+    <script type="module" src="src/main.js?v=mobile-3"></script>
   </body>
 </html>

@@ -4881,7 +4881,25 @@ function crescentStrike() {
   showToast("Sichelhieb entfesselt.");
 }
 
+function findNearestMob(maxDist = 480) {
+  let best = null;
+  let bestD = maxDist;
+  for (const m of mobs) {
+    if (m.passive && !m.aggroed) continue; // ignoriere passive Wanderer
+    const d = Math.hypot(m.x - player.x, m.y - player.y);
+    if (d < bestD) { bestD = d; best = m; }
+  }
+  return best;
+}
+
 function aimAngle() {
+  // Auto-Aim: auf Touch-Geraeten ODER wenn Maus nicht aktiv → naechstes Mob
+  if (isTouchDevice || player.autoAim) {
+    const target = findNearestMob();
+    if (target) {
+      return Math.atan2(target.y - player.y, target.x - player.x);
+    }
+  }
   const cam = camera();
   mouse.worldX = mouse.x + cam.x;
   mouse.worldY = mouse.y + cam.y;
@@ -6415,6 +6433,22 @@ function updateUi() {
   ui.levelText.textContent = player.level;
   ui.goldText.textContent = player.gold;
   ui.attackText.textContent = attackPower();
+  // Mobile HUD spiegeln
+  const hpPct = Math.max(0, (player.hp / player.maxHp) * 100);
+  const mobHpBar = document.getElementById("mobHpBar");
+  if (mobHpBar) mobHpBar.style.width = hpPct + "%";
+  const mobHpText = document.getElementById("mobHpText");
+  if (mobHpText) mobHpText.textContent = `${Math.max(0, Math.ceil(player.hp))}/${player.maxHp}`;
+  const mobXpBar = document.getElementById("mobXpBar");
+  if (mobXpBar) mobXpBar.style.width = ((player.xp / player.nextXp) * 100) + "%";
+  const mobLvl = document.getElementById("mobLvl");
+  if (mobLvl) mobLvl.textContent = `Lv ${player.level}`;
+  const mobGold = document.getElementById("mobGold");
+  if (mobGold) mobGold.textContent = player.gold;
+  const mobAtk = document.getElementById("mobAtk");
+  if (mobAtk) mobAtk.textContent = attackPower();
+  const mobDef = document.getElementById("mobDef");
+  if (mobDef) mobDef.textContent = totalDefense();
   const armor = equippedArmorItem();
   const totalDef = totalDefense();
   ui.armorText.textContent = armor ? `${itemDefs[armor.id].name.split(" ")[0]} +${armor.upgrade || 0} (${totalDef})` : `+${player.armorLevel} (${totalDef})`;
