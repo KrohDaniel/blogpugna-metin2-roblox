@@ -6486,6 +6486,37 @@ function updateQuest() {
   }
 }
 
+function updateTouchCooldown(btnId, abilityId) {
+  const btn = document.getElementById(btnId);
+  if (!btn) return;
+  const cdTime = btn.querySelector(".cd-time");
+  const lblEl = btn.querySelector(".lbl");
+  if (!abilityId) {
+    btn.style.setProperty("--cd-pct", "0");
+    if (cdTime) cdTime.textContent = "";
+    if (lblEl) lblEl.style.opacity = "0.4";
+    btn.classList.remove("ready-glow");
+    return;
+  }
+  const def = getAbilityDef(abilityId);
+  const remaining = abilityCooldown(abilityId);
+  const maxCd = def ? def.cooldown * (1 - totalCdr()) : 1;
+  if (remaining > 0) {
+    const pct = Math.min(100, (remaining / maxCd) * 100);
+    btn.style.setProperty("--cd-pct", pct.toString());
+    if (cdTime) cdTime.textContent = remaining >= 10 ? Math.ceil(remaining) : remaining.toFixed(1);
+    if (lblEl) lblEl.style.opacity = "0.35";
+    btn.classList.remove("ready-glow");
+  } else {
+    btn.style.setProperty("--cd-pct", "0");
+    if (cdTime) cdTime.textContent = "";
+    if (lblEl) lblEl.style.opacity = "1";
+    // Ulti-Ready bekommt Glow
+    if (def && def.ultimate) btn.classList.add("ready-glow");
+    else btn.classList.remove("ready-glow");
+  }
+}
+
 function updateUi() {
   ui.hpText.textContent = `${Math.max(0, Math.ceil(player.hp))} / ${player.maxHp}`;
   ui.hpBar.style.width = `${Math.max(0, (player.hp / player.maxHp) * 100)}%`;
@@ -6510,6 +6541,10 @@ function updateUi() {
   if (mobAtk) mobAtk.textContent = attackPower();
   const mobDef = document.getElementById("mobDef");
   if (mobDef) mobDef.textContent = totalDefense();
+  // Touch-Skill-Cooldowns mit Kreis-Sektor + Sekunden-Text
+  updateTouchCooldown("touchSkillQ", primaryAbilityId());
+  updateTouchCooldown("touchSkillE", secondaryAbilityId());
+  updateTouchCooldown("touchSkillR", ultimateAbilityId());
   const armor = equippedArmorItem();
   const totalDef = totalDefense();
   ui.armorText.textContent = armor ? `${itemDefs[armor.id].name.split(" ")[0]} +${armor.upgrade || 0} (${totalDef})` : `+${player.armorLevel} (${totalDef})`;

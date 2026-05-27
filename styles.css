@@ -2861,6 +2861,35 @@ body.is-touch .touch-controls { display: block; }
   transition: transform 0.08s ease;
 }
 .touch-skill:active { transform: scale(0.92); }
+
+/* Cooldown-Overlay: dunkler Kreis-Sektor schrumpft mit der Zeit */
+.touch-skill { position: relative; overflow: hidden; }
+.touch-skill::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: conic-gradient(rgba(0, 0, 0, 0.65) calc(var(--cd-pct, 0) * 1%), transparent 0);
+  transition: background 0.06s linear;
+}
+.touch-skill .cd-time {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 800;
+  color: #ffffff;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  pointer-events: none;
+  z-index: 2;
+}
+.touch-skill.ready-glow {
+  box-shadow: 0 0 14px rgba(253, 224, 71, 0.7), 0 4px 12px rgba(0, 0, 0, 0.45);
+  border-color: rgba(253, 224, 71, 0.8);
+}
 /* Layout: Atk (gross oben), Q + E (Reihe 2), R + Pot (Reihe 3) */
 .touch-skill.atk {
   background: linear-gradient(135deg, #ef4444, #b91c1c);
