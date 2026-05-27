@@ -36,6 +36,9 @@
               "hp": { ".validate": "newData.isNumber()" },
               "maxHp": { ".validate": "newData.isNumber()" },
               "level": { ".validate": "newData.isNumber()" },
+              "classId": {
+                ".validate": "newData.isString() && newData.val().length <= 24"
+              },
               "weapon": { ".validate": "newData.isString() && newData.val().length <= 32" },
               "weaponUpgrade": { ".validate": "newData.isNumber()" },
               "armorLevel": { ".validate": "newData.isNumber()" },
@@ -46,7 +49,96 @@
             }
           },
           "world": {
-            ".write": "$roomId.matches(/^[a-zA-Z0-9_-]{1,32}$/)"
+            ".write": "$roomId.matches(/^[a-zA-Z0-9_-]{1,32}$/)",
+            "host": {
+              ".validate": "newData.hasChildren(['name', 'ts']) && newData.child('name').isString() && newData.child('ts').isNumber()",
+              "$other": { ".validate": false }
+            },
+            "mobs": {
+              "$mobId": {
+                ".validate": "newData.hasChildren(['x', 'y', 'hp']) && newData.child('x').isNumber() && newData.child('y').isNumber() && newData.child('hp').isNumber() && newData.child('hp').val() >= 0"
+              }
+            },
+            "stones": {
+              "$stoneId": {
+                ".validate": "newData.hasChildren(['x', 'y', 'hp']) && newData.child('x').isNumber() && newData.child('y').isNumber() && newData.child('hp').isNumber() && newData.child('hp').val() >= 0"
+              }
+            },
+            "loot": {
+              "$lootId": {
+                ".validate": "newData.hasChildren(['id', 'x', 'y']) && newData.child('id').isString() && newData.child('id').val().length <= 48 && newData.child('x').isNumber() && newData.child('y').isNumber()",
+                "id": { ".validate": "newData.isString() && newData.val().length <= 48" },
+                "count": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 999" },
+                "x": { ".validate": "newData.isNumber()" },
+                "y": { ".validate": "newData.isNumber()" },
+                "owner": { ".validate": "newData.isString() && newData.val().length <= 18" },
+                "ownerLockUntil": { ".validate": "newData.isNumber()" },
+                "ts": { ".validate": "newData.isNumber()" },
+                "$other": { ".validate": false }
+              }
+            },
+            "hits": {
+              "$hitId": {
+                ".validate": "newData.hasChildren(['kind', 'amount']) && newData.child('kind').isString() && newData.child('amount').isNumber()",
+                "kind": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                "serverId": { ".validate": "newData.isString() && newData.val().length <= 64" },
+                "amount": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
+                "by": { ".validate": "newData.isString() && newData.val().length <= 18" },
+                "ts": { ".validate": "newData.isNumber()" },
+                "$other": { ".validate": false }
+              }
+            },
+            "grants": {
+              "$grantId": {
+                ".validate": "newData.hasChildren(['to', 'ts']) && newData.child('to').isString()",
+                "to": { ".validate": "newData.isString() && newData.val().length <= 18" },
+                "gold": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
+                "xp": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
+                "ts": { ".validate": "newData.isNumber()" },
+                "$other": { ".validate": false }
+              }
+            },
+            "pvp": {
+              "mode": {
+                ".validate": "newData.isString() && (newData.val() === 'duel' || newData.val() === 'race')"
+              },
+              "ready": {
+                "$username": {
+                  ".validate": "$username.matches(/^[a-z0-9_]{3,18}$/) && newData.hasChildren(['name', 'mode', 'ts'])",
+                  "name": { ".validate": "newData.isString() && newData.val().length <= 18" },
+                  "mode": { ".validate": "newData.isString() && (newData.val() === 'duel' || newData.val() === 'race')" },
+                  "classId": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                  "ts": { ".validate": "newData.isNumber()" },
+                  "$other": { ".validate": false }
+                }
+              },
+              "match": {
+                ".validate": "newData.hasChildren(['status']) && newData.child('status').isString()",
+                "status": { ".validate": "newData.isString() && newData.val().length <= 16" },
+                "mode": { ".validate": "newData.isString() && (newData.val() === 'duel' || newData.val() === 'race')" },
+                "players": { ".validate": "newData.isString() || newData.hasChildren()" },
+                "winner": { ".validate": "newData.isString() && newData.val().length <= 32" },
+                "endsAt": { ".validate": "newData.isNumber()" },
+                "startedAt": { ".validate": "newData.isNumber()" },
+                "$other": { ".validate": true }
+              },
+              "scores": {
+                "$username": {
+                  ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 1000000"
+                }
+              },
+              "hits": {
+                "$hitId": {
+                  ".validate": "newData.hasChildren(['kind', 'amount'])",
+                  "kind": { ".validate": "newData.isString() && newData.val().length <= 24" },
+                  "amount": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
+                  "by": { ".validate": "newData.isString() && newData.val().length <= 18" },
+                  "target": { ".validate": "newData.isString() && newData.val().length <= 18" },
+                  "ts": { ".validate": "newData.isNumber()" },
+                  "$other": { ".validate": false }
+                }
+              }
+            }
           }
         }
       }
