@@ -1557,6 +1557,50 @@ bindTouchSkill("touchSkillE", () => useAbility(secondaryAbilityId()));
 bindTouchSkill("touchSkillR", () => useAbility(ultimateAbilityId()));
 bindTouchSkill("touchPotion", () => usePotion());
 
+// Fullscreen-Toggle
+function toggleFullscreen() {
+  const el = document.documentElement;
+  if (!document.fullscreenElement) {
+    (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen)?.call(el).catch(() => {});
+    document.body.classList.add("fullscreen-active");
+  } else {
+    (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen)?.call(document);
+    document.body.classList.remove("fullscreen-active");
+  }
+  // Canvas neu sizen
+  setTimeout(() => { if (typeof resizeCanvas === "function") resizeCanvas(); }, 200);
+}
+document.getElementById("touchFullscreen")?.addEventListener("click", toggleFullscreen);
+document.addEventListener("fullscreenchange", () => {
+  document.body.classList.toggle("fullscreen-active", !!document.fullscreenElement);
+  if (typeof resizeCanvas === "function") resizeCanvas();
+});
+
+// Touch-Menu (ersetzt die hud-toggles auf Mobile)
+const touchMenuPanel = document.getElementById("touchMenuPanel");
+document.getElementById("touchMenu")?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  touchMenuPanel?.classList.toggle("hidden");
+});
+document.body.addEventListener("click", (e) => {
+  if (!touchMenuPanel || touchMenuPanel.classList.contains("hidden")) return;
+  if (e.target.closest("#touchMenuPanel") || e.target.closest("#touchMenu")) return;
+  touchMenuPanel.classList.add("hidden");
+});
+// Menu-Buttons triggern die original-Overlays per data-overlay
+touchMenuPanel?.querySelectorAll("button[data-overlay]").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const id = btn.dataset.overlay;
+    touchMenuPanel.classList.add("hidden");
+    document.getElementById(id)?.classList.remove("hidden");
+    document.getElementById("overlayBackdrop")?.classList.remove("hidden");
+  });
+});
+document.getElementById("touchSwitchChar")?.addEventListener("click", () => {
+  touchMenuPanel?.classList.add("hidden");
+  document.getElementById("switchCharBtn")?.click();
+});
+
 // Canvas-Tap: bestimmt Blickrichtung fuer den naechsten Auto-Attack (nur im rechten Bereich)
 canvas.addEventListener("touchstart", (e) => {
   if (!isTouchDevice) return;

@@ -2865,22 +2865,115 @@ body.is-touch .touch-controls { display: block; }
 .touch-skill.r { background: linear-gradient(135deg, #f59e0b, #c2410c); }
 .touch-skill.pot { background: linear-gradient(135deg, #ec4899, #be185d); grid-row: 3; grid-column: 1 / span 2; height: 50px; border-radius: 25px; font-size: 22px; }
 
+/* Fullscreen Toggle Button (rechts unten ueber Skill-Stack) */
+.touch-fullscreen, .touch-menu-btn {
+  pointer-events: auto;
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  background: rgba(15, 18, 28, 0.78);
+  color: #f4f0df;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  -webkit-tap-highlight-color: transparent;
+}
+.touch-fullscreen { top: 12px; right: 12px; }
+.touch-menu-btn { top: 12px; right: 64px; }
+.touch-fullscreen:active, .touch-menu-btn:active { transform: scale(0.92); }
+
+/* Mobile-Menue-Panel (slidet von rechts ein) */
+.touch-menu-panel {
+  position: fixed;
+  top: 60px;
+  right: 12px;
+  width: 200px;
+  background: rgba(10, 14, 22, 0.95);
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 60;
+  pointer-events: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+.touch-menu-panel.hidden { display: none; }
+.touch-menu-panel button {
+  padding: 10px 12px;
+  background: rgba(30, 35, 50, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  color: #f4f0df;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.touch-menu-panel button:active { background: rgba(60, 70, 100, 0.85); }
+
 /* Mobile Responsive Layout */
 @media (pointer: coarse), (max-width: 820px) {
   html, body {
     overflow: hidden;
     overscroll-behavior: none;
     touch-action: none;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100vh;
+    height: 100dvh;
   }
-  body.is-touch .bottom-bar { display: none; }
-  body.is-touch .hud-toggles { gap: 4px; }
-  body.is-touch .hud-toggles button { padding: 4px 6px; font-size: 11px; }
-  body.is-touch .hud-toggles button kbd { display: none; }
-  body.is-touch .game-area { width: 100%; height: 100vh; }
-  body.is-touch #game { width: 100%; height: 100vh; object-fit: cover; }
-  body.is-touch header.top-bar { font-size: 12px; }
-  body.is-touch .quest, body.is-touch .top-bar > div:not(:first-child):not(.hp):not(.bar-strip) { display: none; }
+  body.is-touch .shell {
+    padding: 0;
+    margin: 0;
+    height: 100vh;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+  body.is-touch .bottom-bar { display: none !important; }
+  body.is-touch .hud-toggles { display: none !important; }
+  body.is-touch .top-hud {
+    padding: 4px 8px;
+    gap: 8px;
+    font-size: 11px;
+    min-height: 36px;
+    grid-template-columns: auto 1fr auto;
+  }
+  body.is-touch .top-brand { gap: 6px; }
+  body.is-touch .top-brand .brand-mark { width: 20px; height: 20px; }
+  body.is-touch .top-brand-text small { display: none; }
+  body.is-touch .top-quest { display: none; }
+  body.is-touch .top-vitals { gap: 6px; }
+  body.is-touch .top-stat { padding: 2px 6px; font-size: 10px; }
+  body.is-touch .top-vitals .vital { min-width: 100px; }
+  body.is-touch .game-area {
+    flex: 1;
+    width: 100%;
+    position: relative;
+    overflow: hidden;
+  }
+  body.is-touch #game {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: cover;
+    display: block;
+  }
 }
+
+/* Fullscreen-Modus: HUD ganz weg */
+body.fullscreen-active .top-hud { display: none !important; }
+body.fullscreen-active .game-area { height: 100vh !important; }
+body.fullscreen-active .touch-menu-btn { top: 8px; }
+body.fullscreen-active .touch-fullscreen { top: 8px; }
 
 /* Portrait warning */
 @media (orientation: portrait) and (max-width: 820px) {
