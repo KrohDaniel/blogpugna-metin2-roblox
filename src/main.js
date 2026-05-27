@@ -5294,8 +5294,10 @@ function update(dt) {
       size: 3 + Math.random() * 4,
     });
   }
-  const runHostSim = (!multiplayerReady || isHost) && !isPvpActive() && !currentWorld().noWildMobs && !currentWorld().passiveMobs;
-  if (runHostSim) {
+  const iAmAuthoritative = (!multiplayerReady || isHost) && !isPvpActive();
+  const runHostSim = iAmAuthoritative; // jetzt nur Mob-AI / movement
+  const runWaves = iAmAuthoritative && !currentWorld().noWildMobs && !currentWorld().passiveMobs;
+  if (runWaves) {
     waveTimer -= dt;
     minibossTimer -= dt;
     bossTimer -= dt;
@@ -7125,7 +7127,8 @@ function drawMinimap() {
   const w = 180;
   const h = 120;
   const px = canvas.clientWidth - w - 18;
-  const py = 18;
+  // Unter HUD-Toggle-Buttons platzieren
+  const py = 70;
   ctx.save();
   ctx.fillStyle = "rgba(10, 14, 18, 0.82)";
   ctx.fillRect(px, py, w, h);
@@ -7195,6 +7198,11 @@ function drawMinimap() {
   }
   ctx.fillStyle = "#ffffff";
   ctx.fillRect(px + player.x * sx - 2, mapY + player.y * sy - 2, 5, 5);
+  // Host-Anzeige unten in Mini-Map
+  ctx.font = "bold 10px sans-serif";
+  ctx.textAlign = "left";
+  ctx.fillStyle = isHost ? "#51d37a" : "#9faebd";
+  ctx.fillText(multiplayerReady ? (isHost ? `HOST: ${authUser}` : `Host: ${currentHostName || "—"}`) : "Solo", px + 4, py + h - 4);
   // Boss-Banner
   if (bossOnMap) {
     ctx.font = "bold 10px sans-serif";
