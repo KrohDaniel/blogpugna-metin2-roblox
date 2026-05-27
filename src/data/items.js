@@ -9,6 +9,7 @@ export const itemDefs = {
   rust_sword: { name: "Rostklinge", icon: "🗡", type: "weapon", rarity: "common", attack: 3, color: "#d9dee5", glow: "rgba(217,222,229,0.18)", reach: 82, cooldown: 0.42, style: "sword" },
   twin_daggers: { name: "Zwillingsdolche", icon: "🗡", type: "weapon", rarity: "common", attack: 4, color: "#a8b3c7", glow: "rgba(168,179,199,0.22)", reach: 64, cooldown: 0.34, style: "dagger" },
   apprentice_staff: { name: "Lehrlingsstab", icon: "🪄", type: "weapon", rarity: "common", attack: 4, color: "#9ee7ff", glow: "rgba(85,215,255,0.32)", reach: 360, cooldown: 0.62, style: "staff", projectile: { speed: 520, color: "#9ee7ff", glow: "rgba(85,215,255,0.55)" } },
+  dancer_pole: { name: "Tanzstange", icon: "💃", type: "weapon", rarity: "common", attack: 5, color: "#ec4899", glow: "rgba(236,72,153,0.40)", reach: 88, cooldown: 0.40, style: "pole" },
   iron_blade: { name: "Eisenklinge", icon: "🗡", type: "weapon", rarity: "rare", attack: 8, color: "#9ee7ff", glow: "rgba(85,215,255,0.28)", reach: 92, cooldown: 0.38 },
   metin_glaive: { name: "Metin-Gleve", icon: "⚔", type: "weapon", rarity: "rare", attack: 14, color: "#55d7ff", glow: "rgba(85,215,255,0.36)", reach: 108, cooldown: 0.36 },
   pugna_cleaver: { name: "Pugna-Spalter", icon: "⚔", type: "weapon", rarity: "epic", attack: 21, color: "#c084fc", glow: "rgba(192,132,252,0.42)", reach: 118, cooldown: 0.46 },

@@ -24,6 +24,17 @@ export const talentTrees = {
     { id: "m_poisonmark", name: "Meister: Giftmarke", desc: "+1s Gift-Dauer + 10% DoT pro Punkt", max: 5, effect: "abilityMastery", target: "poisonMark", icon: "☠" },
     { id: "m_shadowdouble", name: "Meister: Schatten-Doppel", desc: "+1s Unsichtbarkeit + 15% Detonations-Schaden pro Punkt", max: 5, effect: "abilityMastery", target: "shadowDouble", icon: "👤" },
   ],
+  charmer: [
+    // Stat-Knoten
+    { id: "c_evade", name: "Anmut", desc: "+4% Ausweich-Chance pro Punkt", max: 5, effect: "evadeBonus", per: 0.04, icon: "✨" },
+    { id: "c_crit", name: "Stilett-Krit", desc: "+5% Crit pro Punkt", max: 5, effect: "critBonus", per: 0.05, icon: "🎯" },
+    { id: "c_speed", name: "Pirouette", desc: "+5% Tempo pro Punkt", max: 5, effect: "speedBonus", per: 0.05, icon: "💨" },
+    { id: "c_ls", name: "Bezauberndes Blut", desc: "+3% Lifesteal pro Punkt", max: 5, effect: "lifestealBonus", per: 0.03, icon: "🩸" },
+    // Mastery
+    { id: "m_polespin", name: "Meister: Wirbelschlag", desc: "+12% Radius + 12% Schaden pro Punkt", max: 5, effect: "abilityMastery", target: "poleSpin", icon: "💃" },
+    { id: "m_blowkiss", name: "Meister: Luftkuss", desc: "+1s Confusion + 15% Schaden pro Punkt", max: 5, effect: "abilityMastery", target: "blowKiss", icon: "💋" },
+    { id: "m_charmdance", name: "Meister: Tanz der Verfuehrung", desc: "+30 Radius + 1s Charme pro Punkt", max: 5, effect: "abilityMastery", target: "charmDance", icon: "🌹" },
+  ],
   runemage: [
     // Stat-Knoten
     { id: "m_atk", name: "Arkane Macht", desc: "+2 Angriff pro Punkt", max: 5, effect: "attackBonusFlat", per: 2, icon: "✨" },

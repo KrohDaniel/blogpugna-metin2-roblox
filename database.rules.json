@@ -80,8 +80,7 @@
           "world": {
             ".write": "$roomId.matches(/^[a-zA-Z0-9_-]{1,32}$/)",
             "host": {
-              ".validate": "newData.hasChildren(['name', 'ts']) && newData.child('name').isString() && newData.child('ts').isNumber()",
-              "$other": { ".validate": false }
+              ".validate": "newData.hasChildren(['name', 'ts']) && newData.child('name').isString() && newData.child('ts').isNumber()"
             },
             "mobs": {
               "$mobId": {

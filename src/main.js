@@ -3148,6 +3148,7 @@ function updateProjectiles(dt) {
           const { dmg, crit } = applyCritAndLifesteal(p.damage * bossMult);
           damageMob(mob, dmg, crit ? { tag: "combo" } : {});
           if (crit) floatText(mob.x, mob.y - 50, "CRIT!", "#ff9540");
+          if (typeof p.onHit === "function") p.onHit(mob);
         } else if (p.owner === "pet") {
           damageMob(mob, p.damage);
         } else {
@@ -3535,6 +3536,9 @@ function useAbility(abilityId) {
     rootSnare,
     swarmCall,
     bearForm,
+    poleSpin,
+    blowKiss,
+    charmDance,
   };
   handlers[abilityId]?.();
   setAbilityCooldown(abilityId);
@@ -3999,6 +4003,122 @@ function bearForm() {
       size: 4,
     });
   }
+}
+
+// ===== Lyra / Verfuehrerin =====
+function addCharmStack() {
+  player.charmStacks = Math.min(5, (player.charmStacks || 0) + 1);
+}
+
+function consumeCharmStacksIfFull() {
+  if ((player.charmStacks || 0) >= 5) {
+    player.charmStacks = 0;
+    return true; // garantierter Crit + Heilung
+  }
+  return false;
+}
+
+function spawnHearts(x, y, n, color = "#ec4899") {
+  for (let i = 0; i < n; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    particles.push({
+      x, y,
+      vx: Math.cos(a) * (40 + Math.random() * 80),
+      vy: Math.sin(a) * (40 + Math.random() * 80) - 30,
+      life: 0.6 + Math.random() * 0.3,
+      color,
+      size: 5 + Math.random() * 3,
+      heart: true,
+    });
+  }
+}
+
+function poleSpin() {
+  const radius = 110;
+  let hits = 0;
+  const crit = consumeCharmStacksIfFull();
+  for (let i = 0; i < 3; i += 1) {
+    setTimeout(() => {
+      for (const mob of [...mobs]) {
+        if (Math.hypot(mob.x - player.x, mob.y - player.y) > radius) continue;
+        const base = Math.floor(attackPower() * 0.55);
+        damageMob(mob, crit ? base * 2 : base, { tag: crit ? "crit" : "spin" });
+        hits += 1;
+      }
+      spawnHearts(player.x, player.y, 8, "#f472b6");
+    }, i * 180);
+  }
+  addCharmStack();
+  if (crit) player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.08));
+  showToast(crit ? "Anmut! Krit-Wirbel!" : "Wirbelschlag!");
+}
+
+function blowKiss() {
+  const angle = aimAngle();
+  const speed = 520;
+  const dmg = Math.floor(attackPower() * 0.4);
+  const crit = consumeCharmStacksIfFull();
+  projectiles.push({
+    x: player.x + Math.cos(angle) * 28,
+    y: player.y - 6 + Math.sin(angle) * 28,
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+    range: 520,
+    travelled: 0,
+    color: "#f472b6",
+    glow: "rgba(244,114,182,0.6)",
+    damage: crit ? dmg * 2 : dmg,
+    owner: "player",
+    pierce: 1,
+    hits: new Set(),
+    life: 1.4,
+    isHeart: true,
+    onHit(target) {
+      if (!target) return;
+      applyStatus(target, "confused", 4);
+      target.confusedBy = authUser || "lyra";
+      spawnHearts(target.x, target.y, 10, "#ec4899");
+      floatText(target.x, target.y - 40, "verliebt!", "#f472b6");
+    },
+  });
+  if (crit) player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * 0.08));
+  addCharmStack();
+  showToast("Luftkuss!");
+}
+
+function charmDance() {
+  const radius = 220;
+  let charmed = 0;
+  // Spielerin wird 1.5s unverwundbar während Tanz
+  player.invuln = Math.max(player.invuln || 0, 1.5);
+  player.charmDanceTimer = 1.5;
+  for (const mob of mobs) {
+    if (mob.bossDef) {
+      // Bosse nicht charmbar, aber kurzer Stun + Toast
+      applyStatus(mob, "stunned", 1);
+      floatText(mob.x, mob.y - 48, "immun", "#fbbf24");
+      continue;
+    }
+    if (Math.hypot(mob.x - player.x, mob.y - player.y) > radius) continue;
+    applyStatus(mob, "charmed", 5);
+    mob.aggroed = false;
+    charmed += 1;
+  }
+  // Visualisierung: Stange aus Boden + Herz-Explosion
+  for (let i = 0; i < 40; i += 1) {
+    const a = (i / 40) * Math.PI * 2;
+    particles.push({
+      x: player.x,
+      y: player.y,
+      vx: Math.cos(a) * 220,
+      vy: Math.sin(a) * 220,
+      life: 0.9,
+      color: i % 2 === 0 ? "#ec4899" : "#f5d042",
+      size: 6,
+      heart: i % 2 === 0,
+    });
+  }
+  showToast(`Tanz der Verfuehrung: ${charmed} Gegner verliebt!`);
 }
 
 function updateWeather(dt) {
@@ -5399,7 +5519,62 @@ function update(dt) {
     const d = Math.hypot(dx, dy) || 1;
     const frozen = statusTime(mob, "frozen") > 0;
     const stunned = statusTime(mob, "stunned") > 0;
-    const speedFactor = stunned ? 0 : frozen ? 0.42 : 1;
+    const charmed = statusTime(mob, "charmed") > 0;
+    const confused = statusTime(mob, "confused") > 0;
+    const speedFactor = stunned ? 0 : frozen ? 0.42 : charmed ? 0.5 : 1;
+    // Charm: Mob folgt Spielerin verträumt, greift nicht an
+    if (charmed) {
+      const ang = Math.atan2(player.y - mob.y, player.x - mob.x) + (Math.sin(performance.now() / 250 + mob.x * 0.01) * 0.4);
+      const dist = Math.hypot(player.x - mob.x, player.y - mob.y);
+      if (dist > 60) {
+        mob.x += Math.cos(ang) * mob.speed * 0.5 * dt;
+        mob.y += Math.sin(ang) * mob.speed * 0.5 * dt;
+      }
+      // Herzchen über'm Kopf
+      if (Math.random() < dt * 4) {
+        particles.push({
+          x: mob.x + (Math.random() - 0.5) * 20,
+          y: mob.y - 50,
+          vx: 0, vy: -40,
+          life: 0.6,
+          color: "#ec4899",
+          size: 5,
+          heart: true,
+        });
+      }
+      continue; // kein Angriff, kein normaler Move
+    }
+    // Confused: Mob greift naechsten anderen Mob an (Verbündeter wird zum Feind)
+    if (confused) {
+      let bestTarget = null;
+      let bestD = Infinity;
+      for (const other of mobs) {
+        if (other === mob) continue;
+        if (statusTime(other, "confused") > 0) continue;
+        const d2 = Math.hypot(other.x - mob.x, other.y - mob.y);
+        if (d2 < bestD && d2 < 400) { bestD = d2; bestTarget = other; }
+      }
+      if (bestTarget) {
+        const ang = Math.atan2(bestTarget.y - mob.y, bestTarget.x - mob.x);
+        mob.x += Math.cos(ang) * mob.speed * dt;
+        mob.y += Math.sin(ang) * mob.speed * dt;
+        if (bestD < mob.r + bestTarget.r + 8) {
+          const dmg = Math.max(2, Math.round(mob.damage * 0.6));
+          bestTarget.hp -= dmg;
+          bestTarget.hitTimer = 0.08;
+          floatText(bestTarget.x, bestTarget.y - 30, `-${dmg}`, "#f472b6");
+          // Kill-Credit dem Lyra-Spieler
+          if (bestTarget.hp <= 0 && mob.confusedBy) {
+            bestTarget.dmgBy = bestTarget.dmgBy || {};
+            bestTarget.dmgBy[mob.confusedBy] = (bestTarget.dmgBy[mob.confusedBy] || 0) + dmg;
+          }
+          mob.attackTelegraph = 0.18;
+        }
+        // Herzchen
+        if (Math.random() < dt * 3) spawnHearts(mob.x, mob.y - 30, 1, "#f472b6");
+      }
+      continue;
+    }
     // Passive Mobs (Wiesen) wandern friedlich umher — bis sie provoziert werden
     const isPassiveIdle = mob.passive && !mob.aggroed;
     if (isPassiveIdle && speedFactor > 0) {
@@ -6084,6 +6259,19 @@ function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, acce
     ctx.fillRect(-6 * scale, -82 * scale, 12 * scale, 12 * scale);
     ctx.fillStyle = hurt ? "#ffffff" : "#f4c95d";
     ctx.fillRect(-3 * scale, -86 * scale, 6 * scale, 6 * scale);
+  } else if (accent === "diadem") {
+    // Goldenes Diadem mit Edelstein
+    const gold = hurt ? "#ffffff" : (accentColor || "#f5d042");
+    ctx.fillStyle = gold;
+    ctx.fillRect(-14 * scale, -58 * scale, 28 * scale, 4 * scale);
+    ctx.fillRect(-2 * scale, -62 * scale, 4 * scale, 6 * scale);
+    // Edelstein
+    ctx.fillStyle = hurt ? "#ffffff" : "#ec4899";
+    ctx.fillRect(-2 * scale, -60 * scale, 4 * scale, 3 * scale);
+    // Zwei Pony-Tail-Pixel
+    ctx.fillStyle = hurt ? "#ffffff" : "#1a1830";
+    ctx.fillRect(-22 * scale, -46 * scale, 6 * scale, 14 * scale);
+    ctx.fillRect(16 * scale, -46 * scale, 6 * scale, 14 * scale);
   }
   ctx.restore();
 }
@@ -6801,6 +6989,25 @@ function drawEquippedWeapon(facing, classDef = getClassDef(player.classId)) {
     return;
   }
 
+  if (style === "pole") {
+    // Lange Polstange mit Goldring oben
+    ctx.fillStyle = weapon.glow || "rgba(236,72,153,0.40)";
+    ctx.fillRect(10, -28, 60, 56);
+    // Stange (silber)
+    ctx.fillStyle = "#d9dee5";
+    ctx.fillRect(6, -2, 64, 4);
+    // Goldring oben
+    ctx.fillStyle = weapon.color || "#ec4899";
+    ctx.fillRect(64, -7, 8, 14);
+    ctx.fillStyle = "#f5d042";
+    ctx.fillRect(66, -5, 4, 10);
+    // Schleife/Akzent unten
+    ctx.fillStyle = "#ec4899";
+    ctx.fillRect(2, -3, 6, 6);
+    ctx.restore();
+    return;
+  }
+
   if (style === "dagger") {
     // Two short blades (one offset)
     ctx.fillStyle = weapon.glow || "rgba(168,179,199,0.22)";
@@ -7277,7 +7484,21 @@ function drawParticles() {
   for (const p of particles) {
     ctx.globalAlpha = clamp(p.life * 2.5, 0, 1);
     ctx.fillStyle = p.color;
-    ctx.fillRect(p.x, p.y, p.size, p.size);
+    if (p.heart) {
+      // Pixel-Herz (5x5)
+      const s = p.size || 4;
+      ctx.fillRect(p.x - s, p.y - s, s, s);
+      ctx.fillRect(p.x, p.y - s, s, s);
+      ctx.fillRect(p.x - s * 2, p.y, s, s);
+      ctx.fillRect(p.x - s, p.y, s, s);
+      ctx.fillRect(p.x, p.y, s, s);
+      ctx.fillRect(p.x + s, p.y, s, s);
+      ctx.fillRect(p.x - s, p.y + s, s, s);
+      ctx.fillRect(p.x, p.y + s, s, s);
+      ctx.fillRect(p.x, p.y + s * 2, s, s);
+    } else {
+      ctx.fillRect(p.x, p.y, p.size, p.size);
+    }
   }
   ctx.globalAlpha = 1;
 }
