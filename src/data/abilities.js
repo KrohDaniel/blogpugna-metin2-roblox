@@ -64,14 +64,14 @@ export const abilityDefs = {
     icon: "💥",
     color: "#f4c95d",
   },
-  shadowStorm: {
-    id: "shadowStorm",
+  shadowDouble: {
+    id: "shadowDouble",
     key: "R",
-    name: "Schattensturm",
-    hint: "Wirbel aus 8 Klingen die durch alles fegen.",
-    cooldown: 38,
+    name: "Schatten-Doppel",
+    hint: "Unsichtbar werden, Doppelgänger taeuscht Gegner. Detoniert beim Tod.",
+    cooldown: 42,
     ultimate: true,
-    icon: "🌪",
+    icon: "👤",
     color: "#7a6cf2",
   },
   meteor: {

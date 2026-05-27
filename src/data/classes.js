@@ -47,7 +47,7 @@ export const classDefs = {
     starterWeapon: "twin_daggers",
     bodyAccent: "hood",
     bars: { leben: 4, schaden: 10, tempo: 10, team: 6 },
-    abilities: ["shadowStep", "poisonMark", "shadowStorm"],
+    abilities: ["shadowStep", "poisonMark", "shadowDouble"],
     passive: {
       name: "Rueckenjaeger",
       text: "Mehr Schaden gegen markierte, betaeubte oder geschwaechte Ziele.",

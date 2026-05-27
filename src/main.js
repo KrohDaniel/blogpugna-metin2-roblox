@@ -160,7 +160,8 @@ let uiThrottle = 0;
 let traderMode = "buy";
 let trainerLastReset = 0;
 let courierState = null;
-let petRuntime = null; // { x, y, attackCd, target }
+let petRuntime = null;
+let shadowDecoy = null; // { x, y, hp, maxHp, life, maxLife }
 let last = performance.now();
 let mouse = { x: canvas.width / 2, y: canvas.height / 2, worldX: 0, worldY: 0 };
 let toastTimer = 0;
@@ -247,7 +248,7 @@ const defaultPlayerState = {
 
 function attackPower() {
   const classDef = getClassDef(player.classId);
-  const classBonus = classDef.id === "shadow" && player.dashCritWindow > 0 ? 8 : 0;
+  const classBonus = 0;
   const powerBonus = player.powerWindow > 0 ? 10 + Math.floor(player.level * 0.7) : 0;
   const talentBonus = talentEffect("attackBonusFlat");
   return Math.round(player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5));
@@ -317,6 +318,8 @@ function setAbilityCooldown(abilityId) {
 }
 
 function rollCrit() {
+  // Shadow im Dash-Crit-Window: 100% Crit für ALLE Treffer 2s lang
+  if (player.classId === "shadow" && player.dashCritWindow > 0) return true;
   return Math.random() < totalCritChance();
 }
 
@@ -2327,7 +2330,7 @@ function useAbility(abilityId) {
     fireOrb,
     frostCircle,
     earthquake,
-    shadowStorm,
+    shadowDouble,
     meteor,
   };
   handlers[abilityId]?.();
@@ -2391,18 +2394,24 @@ function whirlwind() {
 
 function shadowStep() {
   const angle = aimAngle();
-  player.x = clamp(player.x + Math.cos(angle) * 170, player.r, world.w - player.r);
-  player.y = clamp(player.y + Math.sin(angle) * 170, player.r, world.h - player.r);
-  player.dashCritWindow = 2.4;
-  for (let i = 0; i < 28; i += 1) {
+  // Längere Reichweite
+  player.x = clamp(player.x + Math.cos(angle) * 280, player.r, world.w - player.r);
+  player.y = clamp(player.y + Math.sin(angle) * 280, player.r, world.h - player.r);
+  // 2 Sekunden alle Treffer kritisch
+  player.dashCritWindow = 2.0;
+  // 30% Heal
+  const heal = Math.round(player.maxHp * 0.30);
+  player.hp = Math.min(player.maxHp, player.hp + heal);
+  floatText(player.x, player.y - 50, `+${heal} HP`, "#51d37a");
+  for (let i = 0; i < 36; i += 1) {
     const a = Math.random() * Math.PI * 2;
     particles.push({
-      x: player.x + Math.cos(a) * 28,
-      y: player.y - 18 + Math.sin(a) * 28,
-      vx: Math.cos(a) * 90,
-      vy: Math.sin(a) * 90,
-      life: 0.52,
-      color: "#6f63ff",
+      x: player.x + Math.cos(a) * 32,
+      y: player.y - 18 + Math.sin(a) * 32,
+      vx: Math.cos(a) * 110,
+      vy: Math.sin(a) * 110,
+      life: 0.6,
+      color: i % 3 === 0 ? "#51d37a" : "#6f63ff",
       size: 5,
     });
   }
@@ -2414,7 +2423,7 @@ function poisonMark() {
   for (const mob of [...mobs]) {
     if (!isInCone(mob, angle, 260, 105)) continue;
     applyStatus(mob, "marked", 7);
-    applyStatus(mob, "poisoned", 6);
+    applyStatus(mob, "poisoned", 5);
     damageMob(mob, Math.floor(attackPower() * 0.75), { tag: "mark" });
     marked += 1;
   }
@@ -2517,42 +2526,116 @@ function earthquake() {
   showToast("Erdbeben! Alles fliegt.");
 }
 
-function shadowStorm() {
+function shadowDouble() {
+  // Decoy spawnt an aktueller Position
+  const maxHp = Math.round(player.maxHp * 0.6);
+  shadowDecoy = {
+    x: player.x,
+    y: player.y,
+    hp: maxHp,
+    maxHp,
+    life: 6, // existiert max 6s
+    maxLife: 6,
+    classId: player.classId,
+  };
+  // Spieler springt zurück + wird unsichtbar
   const angle = aimAngle();
-  const blades = 8;
-  for (let i = 0; i < blades; i += 1) {
-    const spread = (i / (blades - 1) - 0.5) * 0.9;
-    const a = angle + spread;
-    projectiles.push({
-      x: player.x + Math.cos(a) * 28,
-      y: player.y - 6 + Math.sin(a) * 28,
-      vx: Math.cos(a) * 620,
-      vy: Math.sin(a) * 620,
-      range: 560,
-      travelled: 0,
-      color: "#c4b8ff",
-      glow: "rgba(122, 108, 242, 0.55)",
-      damage: Math.round(attackPower() * 0.9),
-      owner: "player",
-      pierce: 5,
-      hits: new Set(),
-      life: 1.4,
-    });
-  }
-  skillFlashes.push({ color: "#7a6cf2", life: 0.3, maxLife: 0.3 });
-  player.dashCritWindow = 3;
-  for (let i = 0; i < 30; i += 1) {
+  player.x = clamp(player.x - Math.cos(angle) * 180, player.r, world.w - player.r);
+  player.y = clamp(player.y - Math.sin(angle) * 180, player.r, world.h - player.r);
+  player.invisTimer = 3.5; // unsichtbar 3.5s
+  player.invuln = 0.5;
+  // Visuelle Effekte
+  skillFlashes.push({ color: "#7a6cf2", life: 0.35, maxLife: 0.35 });
+  for (let i = 0; i < 36; i += 1) {
+    const a = Math.random() * Math.PI * 2;
     particles.push({
-      x: player.x,
-      y: player.y,
-      vx: (Math.random() - 0.5) * 280,
-      vy: (Math.random() - 0.5) * 280,
-      life: 0.4,
+      x: shadowDecoy.x,
+      y: shadowDecoy.y,
+      vx: Math.cos(a) * 180,
+      vy: Math.sin(a) * 180,
+      life: 0.5,
       color: "#7a6cf2",
       size: 4,
     });
   }
-  showToast("Schattensturm!");
+  showToast("Schatten-Doppel: Du bist unsichtbar!");
+}
+
+function updateShadowDecoy(dt) {
+  if (!shadowDecoy) return;
+  shadowDecoy.life -= dt;
+  // Mobs greifen den Decoy an statt den Spieler — wir nehmen Aggro über reduzierte Distanz weg
+  for (const mob of mobs) {
+    const dDecoy = Math.hypot(mob.x - shadowDecoy.x, mob.y - shadowDecoy.y);
+    if (dDecoy < mob.r + 30) {
+      // Decoy nimmt Schaden
+      shadowDecoy.hp -= mob.damage * dt * 1.5;
+      mob.hitTimer = 0.1;
+    }
+  }
+  if (shadowDecoy.hp <= 0 || shadowDecoy.life <= 0) {
+    detonateShadowDecoy();
+  }
+}
+
+function detonateShadowDecoy() {
+  if (!shadowDecoy) return;
+  const radius = 220;
+  const dmg = Math.round(attackPower() * 2.2);
+  crescentWaves.push({
+    x: shadowDecoy.x, y: shadowDecoy.y, angle: 0,
+    range: radius * 1.1, radius: radius * 1.1,
+    color: "#7a6cf2", life: 0.7, maxLife: 0.7,
+  });
+  for (let i = 0; i < 70; i += 1) {
+    const a = Math.random() * Math.PI * 2;
+    particles.push({
+      x: shadowDecoy.x, y: shadowDecoy.y,
+      vx: Math.cos(a) * (220 + Math.random() * 280),
+      vy: Math.sin(a) * (220 + Math.random() * 280),
+      life: 0.5,
+      color: i % 2 === 0 ? "#c4b8ff" : "#7a6cf2",
+      size: 4,
+    });
+  }
+  cameraShake = 0.4;
+  for (const mob of [...mobs]) {
+    if (Math.hypot(mob.x - shadowDecoy.x, mob.y - shadowDecoy.y) < radius + mob.r) {
+      damageMob(mob, dmg, { tag: "combo" });
+    }
+  }
+  for (const remote of Object.values(remotePlayers)) {
+    if (Math.hypot(remote.x - shadowDecoy.x, remote.y - shadowDecoy.y) < radius) {
+      damageRemotePlayer(remote, dmg, "detonate");
+    }
+  }
+  if (pvpBotEntity && Math.hypot(pvpBotEntity.x - shadowDecoy.x, pvpBotEntity.y - shadowDecoy.y) < radius) {
+    damagePvpBot(dmg);
+  }
+  showToast("Doppelgänger detoniert!");
+  shadowDecoy = null;
+}
+
+function drawShadowDecoy() {
+  if (!shadowDecoy) return;
+  const classDef = getClassDef(shadowDecoy.classId);
+  const flicker = Math.sin(performance.now() / 90) * 0.3 + 0.7;
+  ctx.save();
+  ctx.globalAlpha = flicker;
+  drawBlockPerson(shadowDecoy.x, shadowDecoy.y, {
+    head: "#f3c7a1",
+    body: classDef.color,
+    arms: "#f3c7a1",
+    legs: "#26214f",
+  }, 1.05, 0, false, classDef.bodyAccent, classDef.accent);
+  ctx.restore();
+  // HP-Bar
+  drawHealth(shadowDecoy.x, shadowDecoy.y - 72, 50, shadowDecoy.hp / shadowDecoy.maxHp);
+  // Timer
+  ctx.font = "bold 11px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#c4b8ff";
+  ctx.fillText(`${shadowDecoy.life.toFixed(1)}s`, shadowDecoy.x, shadowDecoy.y - 84);
 }
 
 function meteor() {
@@ -3634,8 +3717,12 @@ function update(dt) {
     mob.hitTimer = Math.max(0, mob.hitTimer - dt);
     tickStatuses(mob, dt);
     if (mob.bossDef) updateWorldBoss(mob, dt);
-    const dx = player.x - mob.x;
-    const dy = player.y - mob.y;
+    // Decoy zieht Aggro wenn da; sonst Spieler. Bei Invis Spieler ignorieren.
+    let tx = player.x, ty = player.y;
+    if (shadowDecoy) { tx = shadowDecoy.x; ty = shadowDecoy.y; }
+    else if (player.invisTimer > 0) { tx = mob.x; ty = mob.y; } // bleibt stehen
+    const dx = tx - mob.x;
+    const dy = ty - mob.y;
     const d = Math.hypot(dx, dy) || 1;
     const frozen = statusTime(mob, "frozen") > 0;
     const stunned = statusTime(mob, "stunned") > 0;
@@ -3654,9 +3741,14 @@ function update(dt) {
         mob.y = blacksmith.y + Math.sin(ang) * (SAFE_ZONE_RADIUS + 4);
       }
     }
-    if (isPassiveIdle) continue; // kein Kontaktschaden bevor aggroed
+    if (isPassiveIdle) continue;
     if (inSafeZone(player.x, player.y)) continue;
-    if (d < player.r + mob.r && player.invuln <= 0) {
+    if (player.invisTimer > 0) continue;
+    // Distanz wieder zum Spieler für den Treffer-Check
+    const pdx = player.x - mob.x;
+    const pdy = player.y - mob.y;
+    const pd = Math.hypot(pdx, pdy) || 1;
+    if (pd < player.r + mob.r && player.invuln <= 0) {
       const def = totalDefense();
       const mitigatedDamage = Math.max(3, Math.ceil(mob.damage * 0.65 + mob.damage * 0.35 - def));
       player.hp -= mitigatedDamage;
@@ -3690,6 +3782,8 @@ function update(dt) {
   updateSkillFlashes(dt);
   updatePvpBot(dt);
   updatePet(dt);
+  updateShadowDecoy(dt);
+  if (player.invisTimer > 0) player.invisTimer -= dt;
   if (cameraShake > 0) cameraShake = Math.max(0, cameraShake - dt * 2.5);
   if (portalCooldown > 0) portalCooldown = Math.max(0, portalCooldown - dt);
   checkPortalTransition();
@@ -4093,6 +4187,7 @@ function draw() {
   drawProjectiles();
   drawPvpBot();
   drawPet();
+  drawShadowDecoy();
   drawPlayer();
   drawParticles();
   drawFloatingText();
@@ -4753,6 +4848,9 @@ function drawPlayer() {
   mouse.worldX = mouse.x + cam.x;
   mouse.worldY = mouse.y + cam.y;
   const facing = Math.atan2(mouse.worldY - player.y, mouse.worldX - player.x);
+  const invis = (player.invisTimer || 0) > 0;
+  ctx.save();
+  if (invis) ctx.globalAlpha = 0.28;
   drawBlockPerson(player.x, player.y, {
     head: "#f3c7a1",
     body: classDef.color,
@@ -4760,8 +4858,18 @@ function drawPlayer() {
     legs: classDef.id === "warrior" ? "#5d2f28" : classDef.id === "shadow" ? "#26214f" : "#21513d",
   }, 1.05, facing, player.invuln > 0 && Math.floor(performance.now() / 80) % 2 === 0,
     classDef.bodyAccent, classDef.accent);
-
   drawEquippedWeapon(facing, classDef);
+  ctx.restore();
+  // Dash-Crit-Window-Aura
+  if (classDef.id === "shadow" && player.dashCritWindow > 0) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, player.r + 14 + Math.sin(performance.now() / 80) * 4, 0, Math.PI * 2);
+    ctx.strokeStyle = "rgba(255, 149, 64, 0.65)";
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+  }
 }
 
 function drawRemotePlayers() {
