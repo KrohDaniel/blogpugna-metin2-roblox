@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blocpugna Prototype</title>
+    <link rel="stylesheet" href="styles.css?v=auth-mp-1" />
+  </head>
+  <body>
+    <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
+      <form id="authForm" class="auth-card">
+        <div class="brand auth-brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Blocpugna</h1>
+            <p>Gemeinsame Map</p>
+          </div>
+        </div>
+        <label>
+          <span>Username</span>
+          <input id="authUsername" name="username" autocomplete="username" minlength="3" maxlength="18" required />
+        </label>
+        <label>
+          <span>Passwort</span>
+          <input id="authPassword" name="password" type="password" autocomplete="current-password" minlength="4" required />
+        </label>
+        <div class="auth-actions">
+          <button id="loginButton" type="submit">Einloggen</button>
+          <button id="registerButton" type="button">Registrieren</button>
+        </div>
+        <p id="authMessage" class="auth-message">Logge dich ein oder erstelle einen Namen fuer deine Runde.</p>
+      </form>
+    </section>
+
+    <main class="shell">
+      <section class="game-area" aria-label="Blocpugna Spielbereich">
+        <canvas id="game" width="1280" height="720"></canvas>
+        <div id="toast" class="toast" aria-live="polite"></div>
+      </section>
+
+      <aside class="hud" aria-label="Spielstatus">
+        <div class="brand">
+          <span class="brand-mark"></span>
+          <div>
+            <h1>Blocpugna</h1>
+            <p id="playerNameText">Nicht eingeloggt</p>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="stat-line">
+            <span>Leben</span>
+            <strong id="hpText">100 / 100</strong>
+          </div>
+          <div class="bar"><span id="hpBar"></span></div>
+
+          <div class="stat-line">
+            <span>Erfahrung</span>
+            <strong id="xpText">0 / 50</strong>
+          </div>
+          <div class="bar xp"><span id="xpBar"></span></div>
+
+          <div class="stat-grid">
+            <div><span>Level</span><strong id="levelText">1</strong></div>
+            <div><span>Gold</span><strong id="goldText">0</strong></div>
+            <div><span>Angriff</span><strong id="attackText">8</strong></div>
+            <div><span>Ruestung</span><strong id="armorText">+0</strong></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">
+            <h2>Quest</h2>
+            <span id="questProgress">0 / 8</span>
+          </div>
+          <p id="questText">Besiege 20 Gegner und zerstoere 1 Metin-Stein. Bosse erscheinen zwischendurch.</p>
+        </div>
+
+        <div class="panel inventory-panel">
+          <div class="panel-title">
+            <h2>Inventar</h2>
+            <button id="sortInventory" type="button">Sortieren</button>
+          </div>
+          <div id="inventory" class="inventory"></div>
+        </div>
+
+        <div class="panel blacksmith-panel">
+          <div class="panel-title">
+            <h2>Schmied</h2>
+            <span id="blacksmithDistance">Finden</span>
+          </div>
+          <p id="blacksmithText">Gehe zum Schmied auf der Karte und druecke F fuer Upgrades bis +9.</p>
+          <div class="smith-actions">
+            <button id="upgradeWeapon" type="button">Waffe +1</button>
+            <button id="upgradeArmor" type="button">Ruestung +1</button>
+          </div>
+        </div>
+
+        <div class="panel abilities">
+          <h2>Faehigkeiten</h2>
+          <button id="skillAura" type="button">
+            <kbd>Q</kbd>
+            <span>
+              <strong>Schwertverbesserung</strong>
+              <small>Rote Waffen-Aura</small>
+            </span>
+          </button>
+          <button id="skillCrescent" type="button">
+            <kbd>E</kbd>
+            <span>
+              <strong>Sichelhieb</strong>
+              <small>Breiter Klingenstoss</small>
+            </span>
+          </button>
+        </div>
+
+        <div class="panel controls">
+          <h2>Steuerung</h2>
+          <div><kbd>WASD</kbd><span>Bewegen</span></div>
+          <div><kbd>Maus</kbd><span>Zielen</span></div>
+          <div><kbd>Klick</kbd><span>Schlagen</span></div>
+          <div><kbd>Leertaste</kbd><span>Schlagen</span></div>
+          <div><kbd>Q</kbd><span>Schwertverbesserung</span></div>
+          <div><kbd>E</kbd><span>Sichelhieb</span></div>
+          <div><kbd>F</kbd><span>Schmied benutzen</span></div>
+          <div><kbd>1</kbd><span>Trank nutzen</span></div>
+        </div>
+      </aside>
+    </main>
+
+    <script type="module" src="firebase-config.js?v=auth-mp-1"></script>
+    <script src="game.js?v=auth-mp-1"></script>
+  </body>
+</html>

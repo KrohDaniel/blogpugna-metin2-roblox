@@ -1,0 +1,8 @@
+{
+  "rules": {
+    "blocpugna": {
+      ".read": true,
+      ".write": true
+    }
+  }
+}
