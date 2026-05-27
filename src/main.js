@@ -2344,6 +2344,7 @@ async function syncPresence(force = false) {
     maxHp: player.maxHp,
     level: player.level,
     classId: player.classId,
+    worldId: currentWorldId,
     weapon: weapon.id,
     weaponUpgrade: equippedWeaponItem()?.upgrade || 0,
     armorLevel: player.armorLevel,
@@ -2385,7 +2386,7 @@ function buildWorldRefs(api) {
 }
 
 function serializeMob(m) {
-  return {
+  const out = {
     x: Math.round(m.x),
     y: Math.round(m.y),
     hp: Math.max(0, Math.ceil(m.hp)),
@@ -2402,6 +2403,22 @@ function serializeMob(m) {
     dmgBy: m.dmgBy || null,
     ts: Date.now(),
   };
+  if (m.bossDef) {
+    out.bossDefId = m.bossDef.id;
+    out.bossPhase = m.bossPhase || 1;
+    if (m.novaCharge > 0) out.novaCharge = m.novaCharge;
+    if (m.charges) {
+      // Nur Telegraph-Zeit sync, nicht alle Daten
+      out.charges = {};
+      for (const k of Object.keys(m.charges)) {
+        out.charges[k] = { t: m.charges[k].t, max: m.charges[k].max, x: m.charges[k].x, y: m.charges[k].y };
+      }
+    }
+  }
+  if (m.skin) out.skin = m.skin;
+  if (m.level) out.level = m.level;
+  if (m.passive) out.passive = true;
+  return out;
 }
 
 function serializeStone(s) {
@@ -2424,11 +2441,14 @@ function applyWorldMobs(map) {
   for (const [id, raw] of Object.entries(map || {})) {
     if (!raw) continue;
     seen.add(id);
+    // bossDefId → echtes bossDef-Objekt (kommt aus Client-Daten)
+    const enriched = { ...raw };
+    if (raw.bossDefId) enriched.bossDef = bosses[raw.bossDefId] || null;
     const ex = byId.get(id);
     if (ex) {
-      Object.assign(ex, raw);
+      Object.assign(ex, enriched);
     } else {
-      mobs.push({ serverId: id, hitTimer: 0, ...raw });
+      mobs.push({ serverId: id, hitTimer: 0, ...enriched });
     }
   }
   // remove ghosts: anything not present in the authoritative snapshot,
@@ -4769,9 +4789,30 @@ function update(dt) {
     const frozen = statusTime(mob, "frozen") > 0;
     const stunned = statusTime(mob, "stunned") > 0;
     const speedFactor = stunned ? 0 : frozen ? 0.42 : 1;
-    // Passive Mobs (Wiesen) bewegen sich nicht und attackieren nicht — bis sie provoziert werden
+    // Passive Mobs (Wiesen) wandern friedlich umher — bis sie provoziert werden
     const isPassiveIdle = mob.passive && !mob.aggroed;
-    if (!isPassiveIdle && runHostSim && d < 520 && speedFactor > 0) {
+    if (isPassiveIdle && speedFactor > 0) {
+      // Wander-State initialisieren
+      if (!mob.wander) {
+        mob.wander = { angle: Math.random() * Math.PI * 2, t: 1 + Math.random() * 3, anchorX: mob.x, anchorY: mob.y };
+      }
+      mob.wander.t -= dt;
+      if (mob.wander.t <= 0) {
+        mob.wander.angle = Math.random() * Math.PI * 2;
+        mob.wander.t = 2 + Math.random() * 4;
+      }
+      const wanderSpeed = mob.speed * 0.35;
+      const wx = mob.x + Math.cos(mob.wander.angle) * wanderSpeed * dt;
+      const wy = mob.y + Math.sin(mob.wander.angle) * wanderSpeed * dt;
+      // In 250px Radius um Anchor bleiben
+      if (Math.hypot(wx - mob.wander.anchorX, wy - mob.wander.anchorY) < 250 && !inSafeZone(wx, wy)) {
+        mob.x = wx;
+        mob.y = wy;
+      } else {
+        // Richtung umkehren
+        mob.wander.angle = Math.atan2(mob.wander.anchorY - mob.y, mob.wander.anchorX - mob.x);
+      }
+    } else if (runHostSim && d < 520 && speedFactor > 0) {
       const nx = mob.x + (dx / d) * mob.speed * speedFactor * dt;
       const ny = mob.y + (dy / d) * mob.speed * speedFactor * dt;
       if (!inSafeZone(nx, ny)) {
@@ -5969,6 +6010,8 @@ function drawRemotePlayers() {
   const now = Date.now();
   for (const remote of Object.values(remotePlayers)) {
     if (!remote || now - (remote.updatedAt || 0) > 12000) continue;
+    // Nur Remote-Spieler in derselben Welt rendern
+    if (remote.worldId && remote.worldId !== currentWorldId) continue;
     const classDef = getClassDef(remote.classId);
     drawBlockPerson(remote.x, remote.y, {
       head: "#f3c7a1",
