@@ -2885,10 +2885,24 @@ async function tryBecomeHost() {
       showToast("Du bist Host: Welt wird von dir verwaltet.");
       const existing = await api.get(worldRefs.mobs);
       const empty = !existing.exists() || Object.keys(existing.val() || {}).length === 0;
-      if (empty) {
+      // Stale-State-Recovery: wenn Welt passiveMobs hat aber lokale mobs aggressive Klötze enthalten → reset
+      const wDef = currentWorld();
+      const hasStaleAggressive = wDef.passiveMobs && mobs.some((m) => !m.passive);
+      if (hasStaleAggressive) {
+        mobs.length = 0;
+        stones.length = 0;
+        droppedItems.length = 0;
+        showToast("Welt zurueckgesetzt (stale state gefunden).");
+      }
+      if (empty || hasStaleAggressive) {
         if (mobs.length === 0 && stones.length === 0) seedWorld();
         for (const m of mobs) if (!m.serverId) m.serverId = nextId("m");
         for (const s of stones) if (!s.serverId) s.serverId = nextId("s");
+        // Stale-Cleanup: lösche auch in Firebase die alten serverIds bevor neue geschrieben werden
+        if (hasStaleAggressive) {
+          await api.set(worldRefs.mobs, null);
+          await api.set(worldRefs.stones, null);
+        }
         await hostTick();
       }
       const hitsSnap = await api.get(worldRefs.hits);
