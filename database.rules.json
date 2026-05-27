@@ -36,9 +36,7 @@
               "hp": { ".validate": "newData.isNumber()" },
               "maxHp": { ".validate": "newData.isNumber()" },
               "level": { ".validate": "newData.isNumber()" },
-              "classId": {
-                ".validate": "newData.isString() && newData.val().length <= 24"
-              },
+              "classId": { ".validate": "newData.isString() && newData.val().length <= 24" },
               "weapon": { ".validate": "newData.isString() && newData.val().length <= 32" },
               "weaponUpgrade": { ".validate": "newData.isNumber()" },
               "armorLevel": { ".validate": "newData.isNumber()" },
