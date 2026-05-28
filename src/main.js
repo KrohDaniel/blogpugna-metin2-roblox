@@ -8276,12 +8276,26 @@ function drawRemotePlayers() {
     // Nur Remote-Spieler in derselben Welt rendern
     if (remote.worldId && remote.worldId !== currentWorldId) continue;
     const classDef = getClassDef(remote.classId);
+    // Lauf-Animation + Blickrichtung lokal aus Positionsaenderung ableiten
+    if (remote._lx === undefined) { remote._lx = remote.x; remote._ly = remote.y; remote._walk = 0; remote._face = 0; }
+    const mdx = remote.x - remote._lx;
+    const mdy = remote.y - remote._ly;
+    const moved = Math.hypot(mdx, mdy);
+    if (moved > 0.4) {
+      remote._walk = (remote._walk || 0) + moved * 0.05;
+      remote._face = Math.atan2(mdy, mdx); // schaut in Laufrichtung
+    } else {
+      remote._walk = (remote._walk || 0) * 0.9;
+    }
+    remote._lx = remote.x;
+    remote._ly = remote.y;
+    const breath = moved < 0.4 ? Math.sin(now / 700 + remote.x * 0.01) * 1.2 : 0;
     drawBlockPerson(remote.x, remote.y, {
       head: "#f3c7a1",
       body: classDef.color || remote.color || "#51d37a",
       arms: "#f3c7a1",
       legs: classDef.id === "warrior" ? "#5d2f28" : classDef.id === "shadow" ? "#26214f" : "#21513d",
-    }, 1.02, 0, false, classDef.bodyAccent, classDef.accent);
+    }, 1.02, remote._face, false, classDef.bodyAccent, classDef.accent, remote._walk, breath);
     drawRemoteWeapon(remote);
     drawHealth(remote.x, remote.y - 72, 54, (remote.hp || 0) / (remote.maxHp || 1));
     ctx.font = "bold 15px sans-serif";
