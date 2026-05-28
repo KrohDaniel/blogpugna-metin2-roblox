@@ -1365,6 +1365,8 @@ function travelToWorld(targetId, edge) {
   sfx.portal();
   cameraShake = 0.3;
   skillFlashes.push({ color: "#9ee7ff", life: 0.3, maxLife: 0.3 });
+  // Multiplayer: auf die neue Welt umsteigen (eigener Firebase-Pfad)
+  if (multiplayerReady) resubscribeWorld();
 }
 
 function checkPortalTransition() {
@@ -2149,6 +2151,7 @@ function travelToArena() {
   portalCooldown = 2.2;
   cameraShake = 0.3;
   skillFlashes.push({ color: "#7a6cf2", life: 0.3, maxLife: 0.3 });
+  if (multiplayerReady) resubscribeWorld();
 }
 
 function spawnPvpBot() {
@@ -3016,8 +3019,9 @@ function nextId(prefix) {
   return `${prefix}_${Date.now().toString(36)}_${Math.floor(Math.random() * 1e9).toString(36)}`;
 }
 
-function buildWorldRefs(api) {
-  const base = `blocpugna/rooms/${multiplayerRoom}/world`;
+function buildWorldRefs(api, worldId = currentWorldId) {
+  // Pro-Welt-Pfad: jede Welt hat eigene Mobs/Steine/Host → keine Überlappung mehr
+  const base = `blocpugna/rooms/${multiplayerRoom}/worlds/${worldId}`;
   return {
     host: api.ref(api.database, `${base}/host`),
     mobs: api.ref(api.database, `${base}/mobs`),
@@ -3374,6 +3378,18 @@ async function tryBecomeHost() {
   } catch (err) {
     console.warn("tryBecomeHost", err);
   }
+}
+
+// Beim Welt-Wechsel: alte Listener abmelden, fuer neue Welt neu subscriben.
+async function resubscribeWorld() {
+  // Alte Listener trennen
+  for (const unsub of worldUnsubscribers) { try { unsub(); } catch {} }
+  worldUnsubscribers = [];
+  // Host-Status zuruecksetzen (Host ist pro Welt)
+  isHost = false;
+  currentHostName = null;
+  currentHostTs = 0;
+  await startWorldSync();
 }
 
 async function startWorldSync() {
@@ -9027,7 +9043,8 @@ function restart() {
   const oldLevel = player.level;
   resetProgressAfterDeath();
   // Respawn IMMER in Pugna-Wiesen (Heimat-Welt) bei Schmied
-  if (currentWorldId !== "meadows") {
+  const worldChanged = currentWorldId !== "meadows";
+  if (worldChanged) {
     currentWorldId = "meadows";
   }
   player.x = blacksmith.x;
@@ -9050,6 +9067,9 @@ function restart() {
   player.frostSlowTimer = 0;
   seedWorld();
   renderInventory();
+  // Multiplayer: bei Welt-Wechsel (z.B. aus Frost zurueck in Wiesen) neu subscriben,
+  // damit man nicht weiter die Mobs der alten Welt sieht/ueberschreibt.
+  if (multiplayerReady && worldChanged) resubscribeWorld();
   const newLevel = player.level;
   if (oldLevel > newLevel) {
     showToast(`Tod: Level ${oldLevel} → ${newLevel}. Inventar bleibt. Respawn in Pugna-Wiesen.`);

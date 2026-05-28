@@ -78,8 +78,9 @@
               }
             }
           },
-          "world": {
-            ".write": "$roomId.matches(/^[a-zA-Z0-9_-]{1,32}$/)",
+          "worlds": {
+            "$worldId": {
+            ".write": "$roomId.matches(/^[a-zA-Z0-9_-]{1,32}$/) && $worldId.matches(/^[a-z]{1,24}$/)",
             "host": {
               ".validate": "newData.hasChildren(['name', 'ts']) && newData.child('name').isString() && newData.child('ts').isNumber()"
             },
@@ -167,6 +168,7 @@
                   "$other": { ".validate": false }
                 }
               }
+            }
             }
           }
         }
