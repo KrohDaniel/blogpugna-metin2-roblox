@@ -1043,6 +1043,44 @@ function drawRaid(cam) {
   ctx.fillRect(RAID_BOSS_X - 4, -100, 8, world.h + 200);
 }
 
+// Bildschirm-fester Raid-HUD: Fortschritt + Lawinen-Warnung
+function drawRaidHud() {
+  if (!raid || currentWorldId !== "frost_raid") return;
+  const W = ctx.canvas.width;
+  const pct = Math.max(0, Math.min(1, player.x / RAID_BOSS_X));
+  const danger = player.x - raid.lawineX; // kleiner = gefaehrlicher
+  const barW = Math.min(560, W - 120), barH = 16;
+  const bx = (W - barW) / 2, by = 70;
+  ctx.save();
+  ctx.textAlign = "center";
+  ctx.font = "bold 15px sans-serif";
+  ctx.fillStyle = "#dff3ff";
+  ctx.fillText(`❄ EISBRECHER-FLUCHT — ${Math.round(pct * 100)}%`, W / 2, by - 8);
+  // Fortschrittsleiste
+  ctx.fillStyle = "rgba(10,30,45,0.8)";
+  ctx.fillRect(bx, by, barW, barH);
+  ctx.fillStyle = "#7dd3fc";
+  ctx.fillRect(bx, by, barW * pct, barH);
+  // Blockaden-Marker auf der Leiste
+  ctx.fillStyle = "#fde047";
+  for (const s of raid.segs) {
+    const mx = bx + barW * (s.x / RAID_BOSS_X);
+    ctx.fillRect(mx - 1, by - 3, 2, barH + 6);
+  }
+  ctx.strokeStyle = "rgba(255,255,255,0.4)"; ctx.lineWidth = 1;
+  ctx.strokeRect(bx, by, barW, barH);
+  // Lawinen-Warnung
+  if (danger < 500 && !raid.bossSpawned) {
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 120);
+    ctx.globalAlpha = 0.6 + 0.4 * pulse;
+    ctx.fillStyle = danger < 250 ? "#ef4444" : "#fb923c";
+    ctx.font = "bold 20px sans-serif";
+    ctx.fillText(danger < 250 ? "⚠ LAWINE GANZ NAH — LAUF!" : "⚠ Lawine kommt näher", W / 2, by + 44);
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
 function triggerClassSpotlight(boss) {
   const cls = player.classId;
   player.spotlightBuff = 4;
@@ -3006,6 +3044,7 @@ function serializeCurrentCharacter() {
     armorIndex: player.armorIndex,
     bootsIndex: player.bootsIndex,
     hatIndex: player.hatIndex,
+    fastmode: !!player.fastmode,
     talents: { ...(player.talents || {}) },
     talentPoints: player.talentPoints || 0,
     pets: { ...(player.pets || {}) },
@@ -3085,6 +3124,7 @@ function applyCharacter(char) {
   player.armorIndex = char.armorIndex ?? defaultPlayerState.armorIndex;
   player.bootsIndex = char.bootsIndex ?? -1;
   player.hatIndex = char.hatIndex ?? -1;
+  player.fastmode = !!char.fastmode;
   player.talents = { ...(char.talents || {}) };
   player.talentPoints = char.talentPoints || 0;
   player.pets = { ...(char.pets || {}) };
@@ -3132,6 +3172,7 @@ function createCharacter(name, classId) {
     armorIndex: 2,
     bootsIndex: -1,
     hatIndex: -1,
+    fastmode: name.trim().toLowerCase() === "fastmode", // Test-Code: kein Level-Verlust, 2× XP + Drops
     createdAt: Date.now(),
     lastPlayedAt: Date.now(),
   };
@@ -6540,7 +6581,15 @@ function armorDrop(source) {
 }
 
 function dropLoot(x, y, source, owner = null, dmgBy = null) {
-  const { drops: dropIds, gold: goldAmount } = rollDrops(currentWorldId, source, player.classId);
+  const roll = rollDrops(currentWorldId, source, player.classId);
+  const dropIds = [...roll.drops];
+  let goldAmount = roll.gold;
+  // Testmodus: doppelte Drop-Rate + Gold (zweiter Wurf)
+  if (player.fastmode) {
+    const roll2 = rollDrops(currentWorldId, source, player.classId);
+    dropIds.push(...roll2.drops);
+    goldAmount += roll2.gold;
+  }
   // Aggregiere zu Inventar-Eintraegen
   const counts = {};
   for (const id of dropIds) counts[id] = (counts[id] || 0) + 1;
@@ -6698,6 +6747,7 @@ function bossWeaponDrop() {
 }
 
 function gainXp(amount) {
+  if (player.fastmode) amount *= 2; // Testmodus: doppelte XP
   player.xp += amount;
   gainPetXp(Math.max(1, Math.round(amount * 0.5))); // Pet bekommt halbe XP
   let levelsGained = 0;
@@ -8782,6 +8832,7 @@ function draw() {
 
   drawSkillFlashes();
   drawLowHpVignette();
+  drawRaidHud();
   drawMinimap();
   drawComboHud();
   drawBossDefeatCinematic();
@@ -10722,10 +10773,10 @@ function resetProgressAfterDeath() {
   const previousWeaponIndex = player.weaponIndex;
   const previousArmorIndex = player.armorIndex;
   const previousWeapon = player.weapon;
-  // Nur 1 Level verlieren (min 1)
-  const newLevel = Math.max(1, previousLevel - 1);
-  // Gold halbiert
-  const keptGold = Math.floor((player.gold || 0) * 0.5);
+  // Nur 1 Level verlieren (min 1) — im Testmodus gar keinen Verlust
+  const newLevel = player.fastmode ? previousLevel : Math.max(1, previousLevel - 1);
+  // Gold halbiert — im Testmodus voll behalten
+  const keptGold = player.fastmode ? (player.gold || 0) : Math.floor((player.gold || 0) * 0.5);
   applyClass(classId, false);
   for (let i = 1; i < newLevel; i += 1) {
     player.maxHp += classDef.stats.hpPerLevel || 14;
