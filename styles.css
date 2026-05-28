@@ -1261,6 +1261,14 @@ body.is-touch .hud-menu-toggle { display: none; }
   cursor: not-allowed;
 }
 
+.pet-active-btn {
+  border-color: #f0abfc !important;
+  background: linear-gradient(135deg, rgba(236,72,153,0.22), rgba(168,85,247,0.22)) !important;
+  color: #f5d0fe !important;
+  box-shadow: 0 0 10px rgba(236,72,153,0.3);
+}
+.pet-active-btn.hidden { display: none; }
+
 .overlay-hint {
   color: var(--muted);
   font-size: 12px;

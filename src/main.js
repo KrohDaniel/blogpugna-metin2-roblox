@@ -1536,6 +1536,7 @@ window.addEventListener("keydown", (event) => {
   if (key === "e") useAbility(secondaryAbilityId());
   if (key === "r") useAbility(ultimateAbilityId());
   if (key === "f") useBlacksmith();
+  if (key === "z") triggerPetActive();
   if (event.key === "1") usePotion();
   if (key === "g" || key === "h" || key === "j" || key === "k") interactNpc(key);
   if (key === "i" || key === "c") toggleOverlay("invOverlay");
@@ -2171,6 +2172,7 @@ document.querySelector("#traderList")?.addEventListener("click", (event) => {
 });
 document.querySelector("#trainerResetBtn")?.addEventListener("click", trainerReset);
 document.querySelector("#petToggleBtn")?.addEventListener("click", togglePet);
+document.querySelector("#petActiveBtn")?.addEventListener("click", triggerPetActive);
 
 ui.talentList?.addEventListener("click", (event) => {
   const node = event.target.closest(".talent-node");
@@ -6193,6 +6195,22 @@ function handleBossDefeat(mob, loot = true) {
     initPetRuntime();
     saveCurrentCharacter();
   }
+  // Seltene Chance auf ein legendaeres Spezial-Tier (nur wer Schaden gemacht hat)
+  if (contributed) {
+    const missing = LEGENDARY_PET_IDS.filter((id) => !player.pets?.[id]);
+    if (missing.length && Math.random() < 0.12) {
+      const pid = missing[Math.floor(Math.random() * missing.length)];
+      player.pets = player.pets || {};
+      player.pets[pid] = { bossId: pid, unlockedAt: Date.now(), level: 1 };
+      player.activePet = pid;
+      initPetRuntime();
+      renderPetSlot();
+      saveCurrentCharacter();
+      showToast(`💎 LEGENDÄRES TIER! ${specialPets[pid].name} schliesst sich dir an!`);
+      cameraShake = 0.8; skillFlashes.push({ color: "#fde047", life: 0.7, maxLife: 0.7 });
+      sfx.ulti?.();
+    }
+  }
   if (mob.bossDef.defeatToast) showToast(mob.bossDef.defeatToast);
 }
 
@@ -7361,11 +7379,18 @@ function update(dt) {
   const frostSlow = (player.frostSlowTimer || 0) > 0 ? 0.55 : 1;
   const wolfBoost = (player.wolfForm || 0) > 0 ? 1.6 : 1;
   const museSpeed = (player.museActive || 0) > 0 ? 1.08 : 1;
-  const speedMult = (1 + talentEffect("speedBonus")) * frostSlow * wolfBoost * museSpeed * armorSpeedMult() * bootsSpeedMult();
+  const petSurge = (player.petSurge || 0) > 0 ? 1.65 : 1;
+  const rooted = (player.petRoot || 0) > 0; // Golem-Bollwerk: wurzelt dich fest
+  const speedMult = rooted ? 0 : (1 + talentEffect("speedBonus")) * frostSlow * wolfBoost * museSpeed * petSurge * armorSpeedMult() * bootsSpeedMult();
   player.x = clamp(player.x + (move.x / len) * player.speed * speedMult * dt, player.r, world.w - player.r);
   player.y = clamp(player.y + (move.y / len) * player.speed * speedMult * dt, player.r, world.h - player.r);
-  player.attackCooldown = Math.max(0, player.attackCooldown - dt);
+  // Sturmlauf beschleunigt auch die Angriffe (Cooldown laeuft schneller ab)
+  player.attackCooldown = Math.max(0, player.attackCooldown - dt * ((player.petSurge || 0) > 0 ? 1.6 : 1));
   player.invuln = Math.max(0, player.invuln - dt);
+  player.petActiveCd = Math.max(0, (player.petActiveCd || 0) - dt);
+  player.petSurge = Math.max(0, (player.petSurge || 0) - dt);
+  player.petRoot = Math.max(0, (player.petRoot || 0) - dt);
+  player.petShield = Math.max(0, (player.petShield || 0) - dt);
   player.powerWindow = Math.max(0, player.powerWindow - dt);
   player.dashCritWindow = Math.max(0, player.dashCritWindow - dt);
   for (const abilityId of Object.keys(player.abilityCooldowns)) {
@@ -7429,7 +7454,9 @@ function update(dt) {
     const stunned = statusTime(mob, "stunned") > 0;
     const charmed = statusTime(mob, "charmed") > 0;
     const confused = statusTime(mob, "confused") > 0;
-    const speedFactor = stunned ? 0 : frozen ? 0.42 : charmed ? 0.5 : 1;
+    if (mob.slowTimer > 0) mob.slowTimer = Math.max(0, mob.slowTimer - dt);
+    const petSlow = mob.slowTimer > 0 ? 0.45 : 1;
+    const speedFactor = (stunned ? 0 : frozen ? 0.42 : charmed ? 0.5 : 1) * petSlow;
     // Charm: Mob folgt Spielerin verträumt, greift nicht an
     if (charmed) {
       const ang = Math.atan2(player.y - mob.y, player.x - mob.x) + (Math.sin(performance.now() / 250 + mob.x * 0.01) * 0.4);
@@ -8726,11 +8753,36 @@ function drawPortalGate(cx, cy, label, color, levelRange = null) {
   }
 }
 
-// Legendaere Spezial-Pets (nicht von Bossen — z.B. von Gluecksspiel-Gunter)
+// Legendaere Spezial-Pets — gross, stark, mit aktiv ausloesbaren Faehigkeiten (Taste T).
+// drawStyle steuert das aufwendige Rendering, active das Spezial.
 const specialPets = {
-  gunter_phoenix: { id: "gunter_phoenix", name: "Glut-Phönix", scale: 0.5, hp: 100, damage: 0.30, attackRange: 280, attackCooldown: 1.1, speed: 320, color: "#fb923c", glow: "rgba(251,146,60,0.6)", style: "phoenix" },
-  gunter_drake: { id: "gunter_drake", name: "Schatten-Drake", scale: 0.55, hp: 130, damage: 0.34, attackRange: 260, attackCooldown: 1.2, speed: 300, color: "#a855f7", glow: "rgba(168,85,247,0.6)", style: "drake" },
+  gunter_phoenix: {
+    id: "gunter_phoenix", name: "Glut-Phönix", legendary: true, drawStyle: "phoenix",
+    scale: 0.62, hp: 160, damage: 0.42, attackRange: 320, attackCooldown: 0.85, speed: 340,
+    color: "#fb923c", glow: "rgba(251,146,60,0.7)",
+    active: { name: "Phönix-Segen", effect: "phoenix", cooldown: 26, healPct: 0.45, novaRadius: 220, novaDmg: 1.4, desc: "Heilt 45% HP + Feuer-Nova" },
+  },
+  gunter_drake: {
+    id: "gunter_drake", name: "Schatten-Drake", legendary: true, drawStyle: "drake",
+    scale: 0.7, hp: 200, damage: 0.46, attackRange: 300, attackCooldown: 1.0, speed: 320,
+    color: "#a855f7", glow: "rgba(168,85,247,0.7)",
+    active: { name: "Drachenhaut", effect: "invuln", cooldown: 30, duration: 4, desc: "4s Unverwundbarkeit" },
+  },
+  titan_golem: {
+    id: "titan_golem", name: "Titan-Golem", legendary: true, drawStyle: "golem",
+    scale: 0.8, hp: 320, damage: 0.34, attackRange: 230, attackCooldown: 1.4, speed: 250,
+    color: "#94a3b8", glow: "rgba(148,163,184,0.6)",
+    active: { name: "Bollwerk", effect: "bulwark", cooldown: 28, duration: 5, knockback: 260, slow: 3, desc: "5s Fels-Wall: unverwundbar, wurzelt dich, schleudert Gegner weg" },
+  },
+  storm_lynx: {
+    id: "storm_lynx", name: "Sturm-Luchs", legendary: true, drawStyle: "lynx",
+    scale: 0.6, hp: 150, damage: 0.40, attackRange: 300, attackCooldown: 0.8, speed: 420,
+    color: "#38bdf8", glow: "rgba(56,189,248,0.7)",
+    active: { name: "Sturmlauf", effect: "surge", cooldown: 22, duration: 6, desc: "6s +65% Tempo + schnellere Angriffe" },
+  },
 };
+
+const LEGENDARY_PET_IDS = Object.keys(specialPets);
 
 function getActivePetDef() {
   if (!player.activePet) return null;
@@ -8760,13 +8812,26 @@ function renderPetSlot() {
     return;
   }
   btn.disabled = false;
+  const actBtn = document.querySelector("#petActiveBtn");
   if (player.activePet) {
     const def = getActivePetDef();
     nameEl.textContent = def?.name || "Pet";
     btn.textContent = "Abrufen";
+    if (actBtn) {
+      if (def?.active) {
+        actBtn.classList.remove("hidden");
+        const cd = Math.ceil(player.petActiveCd || 0);
+        actBtn.textContent = cd > 0 ? `${def.active.name} (${cd}s)` : `${def.active.name} (Z)`;
+        actBtn.title = def.active.desc || "";
+        actBtn.disabled = cd > 0;
+      } else {
+        actBtn.classList.add("hidden");
+      }
+    }
   } else {
     nameEl.textContent = `${unlocked.length} freigeschaltet`;
     btn.textContent = "Rufen";
+    if (actBtn) actBtn.classList.add("hidden");
   }
 }
 
@@ -8787,6 +8852,56 @@ function togglePet() {
   }
   renderPetSlot();
   saveCurrentCharacter();
+}
+
+// Aktive Pet-Faehigkeit ausloesen (Taste T / Pet-Button). Nur legendaere Pets haben eine.
+function triggerPetActive() {
+  const def = getActivePetDef();
+  if (!def || !petRuntime) { showToast("Kein Pet aktiv."); return; }
+  const act = def.active;
+  if (!act) { showToast(`${def.name} hat keine aktive Faehigkeit.`); return; }
+  if ((player.petActiveCd || 0) > 0) { showToast(`${act.name} bereit in ${Math.ceil(player.petActiveCd)}s`); return; }
+  player.petActiveCd = act.cooldown;
+  if (act.effect === "phoenix") {
+    player.hp = Math.min(player.maxHp, player.hp + Math.round(player.maxHp * act.healPct));
+    const dmg = Math.round(attackPower() * act.novaDmg);
+    for (const mob of [...mobs]) {
+      if (Math.hypot(mob.x - player.x, mob.y - player.y) < act.novaRadius) damageMob(mob, dmg, { tag: "crit" });
+    }
+    anim.spawnRoar?.(player.x, player.y, "#fb923c");
+    for (let i = 0; i < 40; i += 1) {
+      const a = (i / 40) * Math.PI * 2;
+      particles.push({ x: player.x, y: player.y, vx: Math.cos(a) * 280, vy: Math.sin(a) * 280, life: 0.6, color: i % 2 ? "#fb923c" : "#fde047", size: 5 + Math.random() * 4 });
+    }
+    cameraShake = 0.4; skillFlashes.push({ color: "#fb923c", life: 0.5, maxLife: 0.5 });
+    sfx.ulti?.();
+  } else if (act.effect === "invuln") {
+    player.invuln = Math.max(player.invuln, act.duration);
+    player.petShield = act.duration;
+    anim.spawnRoar?.(player.x, player.y, def.color);
+    sfx.ulti?.();
+  } else if (act.effect === "bulwark") {
+    player.invuln = Math.max(player.invuln, act.duration);
+    player.petShield = act.duration;
+    player.petRoot = act.duration;
+    for (const mob of [...mobs]) {
+      const dd = Math.hypot(mob.x - player.x, mob.y - player.y);
+      if (dd < 360) {
+        const a = Math.atan2(mob.y - player.y, mob.x - player.x);
+        mob.x += Math.cos(a) * act.knockback;
+        mob.y += Math.sin(a) * act.knockback;
+        mob.slowTimer = Math.max(mob.slowTimer || 0, act.slow);
+      }
+    }
+    anim.spawnRoar?.(player.x, player.y, "#cbd5e1");
+    cameraShake = 0.6; skillFlashes.push({ color: "#cbd5e1", life: 0.5, maxLife: 0.5 });
+    sfx.ulti?.();
+  } else if (act.effect === "surge") {
+    player.petSurge = act.duration;
+    sfx.levelUp?.();
+  }
+  showToast(`${def.name}: ${act.name}!`);
+  renderPetSlot();
 }
 
 // === Pet-Evolution ===
@@ -8886,38 +9001,109 @@ function drawPet() {
   const def = getActivePetDef();
   if (!def || !petRuntime) return;
   const lvl = petLevel();
-  const scale = 1 + (lvl - 1) * 0.18; // groesser pro Stufe
-  const bob = Math.sin(petRuntime.bobPhase) * 4;
+  const baseScale = (def.legendary ? 1.7 : 1) + (lvl - 1) * 0.18; // legendaere Pets deutlich groesser
+  const bob = Math.sin(petRuntime.bobPhase) * (def.legendary ? 6 : 4);
+  const t = performance.now() / 1000;
   ctx.save();
   ctx.translate(petRuntime.x, petRuntime.y + bob);
-  ctx.scale(scale, scale);
-  // Aura (pulsiert staerker bei hoher Stufe)
-  ctx.fillStyle = def.glow;
-  ctx.beginPath();
-  ctx.arc(0, 0, 18 + (lvl >= PET_MAX_LEVEL ? Math.sin(performance.now() / 200) * 4 : 0), 0, Math.PI * 2);
-  ctx.fill();
-  // Body
-  ctx.fillStyle = def.color;
-  ctx.fillRect(-8, -8, 16, 16);
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(-3, -3, 6, 6);
+  ctx.scale(baseScale, baseScale);
+  // Pulsierende Aura
+  const auraR = 16 + Math.sin(t * 3) * (def.legendary ? 5 : 2);
+  const g = ctx.createRadialGradient(0, 0, 2, 0, 0, auraR + 8);
+  g.addColorStop(0, def.glow);
+  g.addColorStop(1, "rgba(0,0,0,0)");
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(0, 0, auraR + 8, 0, Math.PI * 2); ctx.fill();
+
+  if (def.drawStyle === "phoenix") drawPhoenixPet(t, def);
+  else if (def.drawStyle === "drake") drawDrakePet(t, def);
+  else if (def.drawStyle === "golem") drawGolemPet(t, def);
+  else if (def.drawStyle === "lynx") drawLynxPet(t, def);
+  else {
+    ctx.fillStyle = def.color; ctx.fillRect(-8, -8, 16, 16);
+    ctx.fillStyle = "#fff"; ctx.fillRect(-3, -3, 6, 6);
+  }
+  // Schild-Glanz waehrend Unverwundbarkeit/Bollwerk
+  if ((player.petShield || 0) > 0) {
+    ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 20 + Math.sin(t * 10) * 2, 0, Math.PI * 2); ctx.stroke();
+  }
   // Titan-Krone bei Max-Stufe
   if (lvl >= PET_MAX_LEVEL) {
     ctx.fillStyle = "#fde047";
-    ctx.fillRect(-8, -14, 16, 3);
-    ctx.fillRect(-6, -18, 3, 4);
-    ctx.fillRect(3, -18, 3, 4);
+    ctx.fillRect(-9, -22, 18, 3);
+    ctx.fillRect(-7, -27, 3, 5); ctx.fillRect(-1, -28, 3, 6); ctx.fillRect(5, -27, 3, 5);
   }
   ctx.restore();
-  // Stufen-Anzeige
-  if (lvl > 1) {
-    ctx.save();
-    ctx.font = "bold 9px sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillStyle = lvl >= PET_MAX_LEVEL ? "#fde047" : "#e5e7eb";
-    ctx.fillText(`Lv${lvl}`, petRuntime.x, petRuntime.y - 18 * scale);
+  // Name + Stufe
+  ctx.save();
+  ctx.font = "bold 10px sans-serif"; ctx.textAlign = "center";
+  ctx.fillStyle = def.legendary ? "#fde047" : "#e5e7eb";
+  if (def.legendary || lvl > 1) ctx.fillText(`${def.name}${lvl > 1 ? ` Lv${lvl}` : ""}`, petRuntime.x, petRuntime.y - 26 * baseScale);
+  ctx.restore();
+}
+
+// Glut-Phönix: Flügel aus Flammen, glühender Körper, Funken
+function drawPhoenixPet(t, def) {
+  const flap = Math.sin(t * 8) * 0.5;
+  for (const side of [-1, 1]) {
+    ctx.save(); ctx.rotate(side * (0.5 + flap));
+    ctx.fillStyle = "#fb923c";
+    ctx.beginPath(); ctx.moveTo(0, -2); ctx.quadraticCurveTo(side * 26, -14, side * 34, 2); ctx.quadraticCurveTo(side * 22, 6, 0, 6); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = "#fde047";
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.quadraticCurveTo(side * 18, -6, side * 26, 2); ctx.quadraticCurveTo(side * 16, 4, 0, 4); ctx.closePath(); ctx.fill();
     ctx.restore();
   }
+  ctx.fillStyle = "#fff7ed"; ctx.beginPath(); ctx.ellipse(0, 0, 8, 10, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#fb923c"; ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(-4, -8); ctx.lineTo(4, -8); ctx.closePath(); ctx.fill(); // Federkamm
+  ctx.fillStyle = "#1f2937"; ctx.fillRect(-3, -3, 2, 2); ctx.fillRect(2, -3, 2, 2); // Augen
+  // Schweif-Funken
+  if (Math.random() < 0.5) particles.push({ x: petRuntime.x, y: petRuntime.y + 10, vx: (Math.random() - 0.5) * 40, vy: 30 + Math.random() * 30, life: 0.5, color: Math.random() < 0.5 ? "#fb923c" : "#fde047", size: 3 });
+}
+
+// Schatten-Drake: Drachenkopf, Hörner, Fledermausflügel
+function drawDrakePet(t, def) {
+  const flap = Math.sin(t * 6) * 0.4;
+  for (const side of [-1, 1]) {
+    ctx.save(); ctx.rotate(side * (0.6 + flap));
+    ctx.fillStyle = "#7c3aed";
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(side * 30, -10); ctx.lineTo(side * 28, 4); ctx.lineTo(side * 16, 0); ctx.lineTo(side * 20, 10); ctx.lineTo(side * 8, 4); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  ctx.fillStyle = def.color; ctx.beginPath(); ctx.ellipse(0, 2, 9, 8, 0, 0, Math.PI * 2); ctx.fill(); // Körper
+  ctx.fillStyle = "#c4b5fd"; ctx.beginPath(); ctx.moveTo(0, -4); ctx.lineTo(10, -10); ctx.lineTo(8, -2); ctx.closePath(); ctx.fill(); // Schnauze
+  ctx.fillStyle = "#ede9fe"; // Hörner
+  ctx.beginPath(); ctx.moveTo(-4, -8); ctx.lineTo(-6, -16); ctx.lineTo(-2, -9); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(4, -8); ctx.lineTo(6, -16); ctx.lineTo(2, -9); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#f0abfc"; ctx.fillRect(6, -7, 3, 3); // glühendes Auge
+}
+
+// Titan-Golem: massiver Felskörper, leuchtende Kern-Risse
+function drawGolemPet(t, def) {
+  const pulse = 0.5 + Math.sin(t * 2) * 0.5;
+  ctx.fillStyle = "#475569"; ctx.fillRect(-12, -10, 24, 22); // Körper
+  ctx.fillStyle = "#334155"; ctx.fillRect(-16, -6, 6, 14); ctx.fillRect(10, -6, 6, 14); // Arme
+  ctx.fillStyle = "#64748b"; ctx.fillRect(-10, -18, 20, 10); // Kopf
+  // Leuchtende Risse (Energiekern)
+  ctx.strokeStyle = `rgba(56,189,248,${0.5 + pulse * 0.5})`; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(-6, -8); ctx.lineTo(-2, 0); ctx.lineTo(-6, 8); ctx.moveTo(4, -6); ctx.lineTo(8, 4); ctx.stroke();
+  ctx.fillStyle = `rgba(125,211,252,${0.6 + pulse * 0.4})`; ctx.fillRect(-7, -15, 4, 3); ctx.fillRect(3, -15, 4, 3); // Augen
+}
+
+// Sturm-Luchs: schlanke Raubkatze mit Blitz-Aura
+function drawLynxPet(t, def) {
+  const run = Math.sin(t * 12) * 3;
+  ctx.fillStyle = def.color; ctx.beginPath(); ctx.ellipse(0, 2, 11, 7, 0, 0, Math.PI * 2); ctx.fill(); // Körper
+  ctx.beginPath(); ctx.ellipse(9, -4, 6, 5, 0, 0, Math.PI * 2); ctx.fill(); // Kopf
+  ctx.fillStyle = "#0ea5e9"; // Ohren (Luchs-Pinsel)
+  ctx.beginPath(); ctx.moveTo(6, -8); ctx.lineTo(5, -15); ctx.lineTo(9, -9); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(12, -8); ctx.lineTo(13, -15); ctx.lineTo(10, -9); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#e0f2fe"; ctx.fillRect(10, -5, 2, 2); // Auge
+  // Beine
+  ctx.strokeStyle = def.color; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(-6, 8); ctx.lineTo(-6 + run, 14); ctx.moveTo(4, 8); ctx.lineTo(4 - run, 14); ctx.stroke();
+  // Blitz-Funken
+  if (Math.random() < 0.4) particles.push({ x: petRuntime.x + (Math.random() - 0.5) * 24, y: petRuntime.y + (Math.random() - 0.5) * 20, vx: 0, vy: 0, life: 0.2, color: "#7dd3fc", size: 2 });
 }
 
 function drawNpcs() {
