@@ -1879,7 +1879,8 @@ function applySmithMode(mode) {
     renderMergeSlots();
   } else if (mode === "socket") {
     socketBlock?.classList.remove("hidden");
-    inventoryFilter = "all"; // Waffen + Runen sichtbar
+    // Waffe noch nicht gewaehlt → Waffen zeigen; sonst nur Runen (sortiert)
+    inventoryFilter = socketSelectedIndex !== null ? "rune" : "weapon";
     renderSocketBlock();
   } else {
     upgradeBlock?.classList.remove("hidden");
@@ -1959,7 +1960,9 @@ function selectSocketWeapon(index) {
   const entry = player.inventory[index];
   if (!entry || itemDefs[entry.id]?.type !== "weapon") return;
   socketSelectedIndex = index;
+  inventoryFilter = "rune"; // jetzt nur noch Runen zeigen
   renderSocketBlock();
+  renderInventory();
 }
 
 function socketRuneIntoSelected(runeIndex) {
@@ -2003,7 +2006,9 @@ function removeRuneFromSocket(weaponIndex, socketIdx) {
 
 document.querySelector("#socketReturn")?.addEventListener("click", () => {
   socketSelectedIndex = null;
+  inventoryFilter = "weapon"; // zurueck zur Waffen-Auswahl
   renderSocketBlock();
+  renderInventory();
 });
 
 document.querySelectorAll("[data-smith-mode]").forEach((btn) => {
@@ -5911,19 +5916,22 @@ function upgradeAtBlacksmith(kind) {
 }
 
 const mergeMap = {
-  // Common → Rare
-  rust_sword: "iron_blade",
-  twin_daggers: "iron_blade",
-  apprentice_staff: "metin_glaive",
-  leather_armor: "iron_armor",
-  // Rare → Epic
-  iron_blade: "pugna_cleaver",
-  metin_glaive: "storm_saber",
-  iron_armor: "steel_armor",
-  // Epic → Legendary
-  pugna_cleaver: "fullmoon_sickle",
-  storm_saber: "fullmoon_sickle",
-  steel_armor: "dragon_plate",
+  // Schwert (Krieger)
+  rust_sword: "iron_blade", iron_blade: "pugna_cleaver", pugna_cleaver: "fullmoon_sickle",
+  // Dolche (Schatten)
+  twin_daggers: "fang_daggers", fang_daggers: "venom_kris", venom_kris: "nightfang",
+  // Zauberstab (Magier)
+  apprentice_staff: "crystal_staff", crystal_staff: "rune_staff", rune_staff: "storm_scepter",
+  // Naturstab (Druidin)
+  sprout_staff: "oak_staff", oak_staff: "thorn_staff", thorn_staff: "worldtree_staff",
+  // Polstange (Lyra)
+  dancer_pole: "silk_pole", silk_pole: "rose_pole", rose_pole: "heartbreaker",
+  // Rüstung — Leder
+  leather_armor: "hunter_leather", hunter_leather: "shadow_leather",
+  // Rüstung — Leicht
+  mage_robe: "iron_armor", iron_armor: "silk_garb",
+  // Rüstung — Schwer
+  knight_plate: "steel_armor", steel_armor: "dragon_plate",
 };
 
 function tryAddToMerge(invIndex) {
@@ -5932,6 +5940,12 @@ function tryAddToMerge(invIndex) {
   const def = itemDefs[inv.id];
   if (!def || (def.type !== "weapon" && def.type !== "armor")) return false;
   if (!mergeMap[inv.id]) return false;
+  // Anti-Dupe: derselbe Inventar-Slot darf nur so oft rein wie sein Stapel gross ist
+  const alreadyUsed = mergeSlots.filter((s) => s === invIndex).length;
+  if (alreadyUsed >= (inv.count || 1)) {
+    showToast("Du hast nicht genug Exemplare dieses Items.");
+    return false;
+  }
   // freien Slot suchen
   for (let i = 0; i < 3; i += 1) {
     if (mergeSlots[i] === null) {
@@ -7360,7 +7374,21 @@ function renderInventoryInto(target) {
     if (!def) return false;
     return def.type === inventoryFilter;
   };
-  for (let i = 0; i < slots; i += 1) {
+  // Reihenfolge: bei Runen-Filter nach Wert sortiert (wertvoll → unwertvoll)
+  let order = Array.from({ length: slots }, (_, i) => i);
+  if (inventoryFilter === "rune") {
+    order = player.inventory
+      .map((entry, i) => ({ i, entry }))
+      .filter(({ entry }) => entry && itemDefs[entry.id]?.type === "rune")
+      .sort((a, b) => {
+        const ra = parseRune(a.entry.id), rb = parseRune(b.entry.id);
+        const va = ra ? runeValue(ra.type, ra.tier) : 0;
+        const vb = rb ? runeValue(rb.type, rb.tier) : 0;
+        return vb - va;
+      })
+      .map(({ i }) => i);
+  }
+  for (const i of order) {
     const invItem = player.inventory[i];
     if (!filterFn(invItem)) continue;
     const slot = document.createElement("button");
