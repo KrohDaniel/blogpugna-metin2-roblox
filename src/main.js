@@ -1,6 +1,7 @@
 import { DEFAULT_CLASS_ID, classDefs, getClassDef } from "./data/classes.js";
 import { abilityDefs, getAbilityDef } from "./data/abilities.js";
-import { MAX_STACK, item, itemDefs, typeBadges, rarityLabels, affixCatalog, rollAffixes } from "./data/items.js";
+import { MAX_STACK, item, itemDefs, typeBadges, rarityLabels, affixCatalog, rollAffixes, weaponClassMatch, weaponSocketCount, signatureDefs } from "./data/items.js";
+import { runeTypes, runeTiers, parseRune, runeValue, runeLabel, runeColor, activeRuneWord, runeId, tierOrder } from "./data/runes.js";
 import { getTalentTree, abilityMasteryLevel } from "./data/talents.js";
 import { worldDefs, getWorldDef, PORTAL_EDGE_THRESHOLD, getStoneStyle, getPortalColor, getWeather } from "./data/worlds.js";
 import { rollMobSkin } from "./data/mobs.js";
@@ -336,7 +337,15 @@ function attackPower() {
   const museMult = (player.museActive || 0) > 0 ? 1.12 : 1;
   // Boss-Spotlight-Buff
   const spotlightMult = (player.spotlightBuff || 0) > 0 ? 1.30 : 1;
-  return Math.round((player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5)) * bearMult * rageMult * steamMult * museMult * spotlightMult);
+  // Klassen-Waffen-Match (die "eine Regel": passt = 100%, sonst 75%)
+  const matchMult = weaponClassMatch(currentWeapon(), player.classId);
+  // Runen + Runen-Wort
+  const rs = equippedRuneStats();
+  let runeMult = 1;
+  if (rs.word?.effect.flatDamagePct) runeMult += rs.word.effect.flatDamagePct;
+  if (rs.word?.effect.lowHpDamage && player.hp / player.maxHp < 0.30) runeMult += rs.word.effect.lowHpDamage;
+  const base = player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5) + (rs.flatAttack || 0);
+  return Math.round(base * bearMult * rageMult * steamMult * museMult * spotlightMult * matchMult * runeMult);
 }
 
 function currentWeapon() {
@@ -510,7 +519,9 @@ function applyCritAndLifesteal(amount) {
   let dmg = amount * comboDamageMult();
   let crit = false;
   if (rollCrit()) {
-    dmg = Math.round(dmg * 1.85);
+    const rw = equippedRuneStats().word;
+    const critMult = 1.85 + (rw?.effect.critMult || 0); // "Meuchler" +0.5
+    dmg = Math.round(dmg * critMult);
     crit = true;
     sfx.crit();
     hitStopTimer = Math.max(hitStopTimer, 0.08);
@@ -2288,7 +2299,30 @@ ui.inventory.addEventListener("click", (event) => {
   if (def.type === "potion") usePotion();
   if (def.type === "weapon") equipWeapon(index);
   if (def.type === "armor") equipArmor(index);
+  if (def.type === "rune") socketRuneFromInventory(index);
 });
+
+// Rune aus Inventar in die ausgeruestete Waffe sockeln (naechster freier Slot)
+function socketRuneFromInventory(index) {
+  const entry = player.inventory[index];
+  if (!entry) return;
+  const weapon = equippedWeaponItem();
+  if (!weapon) { showToast("Keine Waffe ausgeruestet."); return; }
+  const maxSockets = weaponSocketCount(weapon);
+  if (maxSockets <= 0) { showToast("Diese Waffe hat keine Sockel (braucht Selten+)."); return; }
+  weapon.sockets = weapon.sockets || [];
+  if (weapon.sockets.length >= maxSockets) { showToast(`Alle ${maxSockets} Sockel belegt.`); return; }
+  weapon.sockets.push(entry.id);
+  // Rune aus Inventar entfernen (1 Stueck)
+  entry.count = (entry.count || 1) - 1;
+  if (entry.count <= 0) player.inventory.splice(index, 1);
+  sfx.pickup?.();
+  const word = activeRuneWord(weapon.sockets);
+  showToast(word ? `Rune gesockelt! Runen-Wort aktiv: ${word.name}!` : `Rune gesockelt (${weapon.sockets.length}/${maxSockets}).`);
+  saveCurrentCharacter();
+  renderInventory();
+  if (typeof updateCharOverlay === "function") updateCharOverlay(totalDefense());
+}
 
 ui.authUsername.value = localStorage.getItem("blocpugnaUser") || "";
 ui.authForm.addEventListener("submit", (event) => {
@@ -5224,7 +5258,40 @@ function dropLoot(x, y, source, owner = null) {
   for (const id of dropIds) counts[id] = (counts[id] || 0) + 1;
   const drops = Object.entries(counts).map(([id, count]) => ({ id, count }));
 
+  // Runen-Drop: Metin-Steine + Bosse droppen mit Chance eine Rune
+  const runeDrop = rollRuneDrop(source);
+  if (runeDrop) drops.push({ id: runeDrop, count: 1 });
+
   return spawnDropEntries(x, y, drops, goldAmount, owner);
+}
+
+// Runen-Drop-Logik: Quelle + Welt bestimmen Chance + Tier-Verteilung.
+function rollRuneDrop(source) {
+  const isBoss = source === "boss";
+  const isMini = source === "miniboss";
+  const isMetin = source === "metin";
+  let chance = 0;
+  if (isBoss) chance = 1.0;       // Boss garantiert Rune
+  else if (isMini) chance = 0.5;
+  else if (isMetin) chance = 0.35;
+  else if (source === "elite") chance = 0.10;
+  if (Math.random() > chance) return null;
+  // Welt-Index bestimmt Tier-Pool (spaetere Welten = hoehere Tiers)
+  const order = ["meadows", "frostwastes", "emberforge", "shadowfen", "skyspire", "tideklippen"];
+  const wi = Math.max(0, order.indexOf(currentWorldId));
+  // Tier-Gewichte verschieben sich mit Welt + Quelle
+  let weights;
+  if (isBoss) weights = wi >= 3 ? { perfekt: 0.4, strahlend: 0.5, klar: 0.1 } : { strahlend: 0.45, klar: 0.4, rissig: 0.15 };
+  else if (isMini) weights = { strahlend: 0.2, klar: 0.5, rissig: 0.3 };
+  else weights = wi >= 3 ? { strahlend: 0.12, klar: 0.43, rissig: 0.45 } : wi >= 1 ? { klar: 0.35, rissig: 0.65 } : { klar: 0.18, rissig: 0.82 };
+  // Tier per gewichtetem Zufall
+  const roll = Math.random();
+  let acc = 0, tier = "rissig";
+  for (const [t, w] of Object.entries(weights)) { acc += w; if (roll <= acc) { tier = t; break; } }
+  // Typ zufaellig (Diamant seltener)
+  const types = ["ruby", "sapphire", "emerald", "topaz", "amethyst", "ruby", "sapphire", "diamond"];
+  const type = types[Math.floor(Math.random() * types.length)];
+  return runeId(type, tier);
 }
 
 function spawnDropEntries(x, y, drops, goldAmount, owner) {
@@ -6647,6 +6714,31 @@ function updateEquipSlot(slot, invItem, kind = "weapon") {
   }
 }
 
+// Aggregiert alle Runen-Boni der aktuell ausgeruesteten Waffe + aktives Runen-Wort.
+function equippedRuneStats() {
+  const out = { flatAttack: 0, crit: 0, lifesteal: 0, cdr: 0, skillDamage: 0, allStats: 0, word: null };
+  const w = equippedWeaponItem();
+  if (!w || !Array.isArray(w.sockets)) return out;
+  for (const rid of w.sockets) {
+    const r = parseRune(rid);
+    if (!r) continue;
+    const v = runeValue(r.type, r.tier);
+    const stat = r.def.stat;
+    if (stat === "allStats") out.allStats += v;
+    else out[stat] = (out[stat] || 0) + v;
+  }
+  // allStats verteilt sich auf alle relevanten Werte
+  if (out.allStats > 0) {
+    out.crit += out.allStats;
+    out.lifesteal += out.allStats;
+    out.cdr += out.allStats;
+    out.skillDamage += out.allStats;
+    out.flatAttack += Math.round(out.allStats * 100); // 0.015 → ~1.5 flat
+  }
+  out.word = activeRuneWord(w.sockets);
+  return out;
+}
+
 function totalCritChance() {
   let crit = 0;
   for (const entry of player.inventory || []) {
@@ -6654,7 +6746,8 @@ function totalCritChance() {
   }
   if (player.classId === "shadow") crit += 0.08;
   crit += talentEffect("critBonus");
-  return Math.min(0.65, crit);
+  crit += equippedRuneStats().crit;
+  return Math.min(0.75, crit);
 }
 
 function totalLifesteal() {
@@ -6663,7 +6756,10 @@ function totalLifesteal() {
     if (entry.affixes?.lifesteal) ls += entry.affixes.lifesteal;
   }
   ls += talentEffect("lifestealBonus");
-  return Math.min(0.35, ls);
+  const rs = equippedRuneStats();
+  ls += rs.lifesteal;
+  if (rs.word?.effect.bonusLifesteal) ls += rs.word.effect.bonusLifesteal;
+  return Math.min(0.5, ls);
 }
 
 function totalCdr() {
@@ -6673,7 +6769,10 @@ function totalCdr() {
   }
   if (player.classId === "runemage") cdr += 0.08;
   cdr += talentEffect("cdrBonus");
-  return Math.min(0.5, cdr);
+  const rs = equippedRuneStats();
+  cdr += rs.cdr;
+  if (rs.word?.effect.cdr) cdr += rs.word.effect.cdr;
+  return Math.min(0.6, cdr);
 }
 
 function talentEffect(effectKey) {
