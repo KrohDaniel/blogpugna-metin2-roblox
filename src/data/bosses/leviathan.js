@@ -9,7 +9,7 @@ export const leviathan = {
   rank: "boss",
   baseStats: {
     hp: 4200,
-    damage: 120,
+    damage: 84,
     speed: 100,
     r: 60,
     scale: 1.8,
@@ -41,7 +41,7 @@ export const leviathan = {
       phase: 2,
       id: "submerge",
       cooldown: 14,
-      damage: 1.8,
+      damage: 1.25,
       diveDuration: 3.5, // Boss verschwindet so lange
       telegraphDuration: 4.0, // Schatten zeigt wo er auftaucht
       radius: 200,

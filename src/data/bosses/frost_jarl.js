@@ -11,7 +11,7 @@ export const frostJarl = {
   spawnDelay: 25, // s nach Welt-Betreten
   baseStats: {
     hp: 2400,
-    damage: 90,
+    damage: 62,
     speed: 78,
     r: 52,
     scale: 1.7,

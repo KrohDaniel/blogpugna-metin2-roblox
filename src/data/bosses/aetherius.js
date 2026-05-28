@@ -9,7 +9,7 @@ export const aetherius = {
   rank: "boss",
   baseStats: {
     hp: 3600,
-    damage: 110,
+    damage: 76,
     speed: 130,
     r: 48,
     scale: 1.55,

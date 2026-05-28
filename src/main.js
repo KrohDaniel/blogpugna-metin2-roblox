@@ -364,6 +364,11 @@ function weaponUpgradeBonus() {
   return (equippedWeaponItem()?.upgrade || 0) * 3;
 }
 
+// One-Shot-Sperre: keine einzelne Boss-/Mob-Faehigkeit darf mehr als 30% maxHP machen.
+function capBossDmg(dmg) {
+  return Math.min(dmg, Math.round(player.maxHp * 0.30));
+}
+
 function equippedArmorItem() {
   if (typeof player.armorIndex !== "number" || player.armorIndex < 0) return null;
   const entry = player.inventory[player.armorIndex];
@@ -970,7 +975,7 @@ function castSubmerge(mob, def, ab, chargeInfo) {
     }
     cameraShake = 0.6;
     if (Math.hypot(player.x - chargeInfo.x, player.y - chargeInfo.y) < ab.radius && player.invuln <= 0) {
-      const dmg = Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+      const dmg = capBossDmg(Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4)));
       player.hp -= dmg;
       player.invuln = 0.8;
       floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
@@ -1067,7 +1072,7 @@ function castFireColumn(mob, def, ab, chargeInfo) {
   }
   cameraShake = 0.35;
   if (Math.hypot(player.x - chargeInfo.x, player.y - chargeInfo.y) < ab.radius && player.invuln <= 0) {
-    const dmg = Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+    const dmg = capBossDmg(Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4)));
     player.hp -= dmg;
     player.invuln = 0.7;
     floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
@@ -1155,7 +1160,7 @@ function castSporeBurst(mob, def, ab) {
     });
   }
   if (Math.hypot(player.x - mob.x, player.y - mob.y) < radius && player.invuln <= 0) {
-    const dmg = Math.max(5, Math.round(mob.damage * ab.damage - totalDefense() * 0.5));
+    const dmg = capBossDmg(Math.max(5, Math.round(mob.damage * ab.damage - totalDefense() * 0.5)));
     player.hp -= dmg;
     player.invuln = 0.6;
     floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
@@ -1192,7 +1197,7 @@ function castLightningChain(mob, def, ab) {
       });
     }
     if (best.isPlayer && player.invuln <= 0) {
-      const dmg = Math.max(6, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+      const dmg = capBossDmg(Math.max(6, Math.round(mob.damage * ab.damage - totalDefense() * 0.4)));
       player.hp -= dmg;
       player.invuln = 0.3;
       floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
@@ -1210,7 +1215,7 @@ function castWindBurst(mob, def, ab) {
   });
   const dd = Math.hypot(player.x - mob.x, player.y - mob.y);
   if (dd < ab.radius && player.invuln <= 0) {
-    const dmg = Math.max(5, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+    const dmg = capBossDmg(Math.max(5, Math.round(mob.damage * ab.damage - totalDefense() * 0.4)));
     player.hp -= dmg;
     player.invuln = 0.5;
     floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
@@ -1242,7 +1247,7 @@ function castThunderclap(mob, def, ab) {
   cameraShake = 0.5;
   const dd = Math.hypot(player.x - mob.x, player.y - mob.y);
   if (dd < ab.radius && player.invuln <= 0) {
-    const dmg = Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4));
+    const dmg = capBossDmg(Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.4)));
     player.hp -= dmg;
     player.invuln = ab.stunDuration || 1.5;
     floatText(player.x, player.y - 36, `STUN -${dmg}`, ab.color);
@@ -1293,7 +1298,7 @@ function castFrostNova(mob, def) {
   }
   cameraShake = 0.3;
   if (Math.hypot(player.x - mob.x, player.y - mob.y) < ab.radius && player.invuln <= 0) {
-    const dmg = Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.5));
+    const dmg = capBossDmg(Math.max(8, Math.round(mob.damage * ab.damage - totalDefense() * 0.5)));
     player.hp -= dmg;
     player.invuln = 0.6;
     floatText(player.x, player.y - 36, `-${dmg}`, ab.color);
@@ -3042,6 +3047,18 @@ function applyQueuedHit(hit) {
   target.hitTimer = 0.16;
   target.dmgBy = target.dmgBy || {};
   target.dmgBy[hit.by] = (target.dmgBy[hit.by] || 0) + hit.dmg;
+  // Stein-Wächter spawnen bei HP-Schwellen (lief vorher nur im Single-Player-Pfad)
+  if (hit.type === "stone" && target.hp > 0 && target.spawnThresholds) {
+    const pct = target.hp / target.maxHp;
+    target.spawnedAt = target.spawnedAt || [];
+    for (const t of target.spawnThresholds) {
+      if (!target.spawnedAt.includes(t) && pct <= t) {
+        target.spawnedAt.push(t);
+        spawnStoneGuardians(target);
+        break;
+      }
+    }
+  }
   if (target.hp <= 0) {
     if (target.pvpTarget) {
       target.hp = target.maxHp;

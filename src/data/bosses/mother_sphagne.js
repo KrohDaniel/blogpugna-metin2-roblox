@@ -9,7 +9,7 @@ export const motherSphagne = {
   rank: "boss",
   baseStats: {
     hp: 3200,
-    damage: 88,
+    damage: 62,
     speed: 86,
     r: 56,
     scale: 1.6,

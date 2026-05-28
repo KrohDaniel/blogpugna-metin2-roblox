@@ -9,7 +9,7 @@ export const pyromantAsaru = {
   rank: "boss",
   baseStats: {
     hp: 2700,
-    damage: 100,
+    damage: 70,
     speed: 90,
     r: 50,
     scale: 1.65,
@@ -53,7 +53,7 @@ export const pyromantAsaru = {
       phase: 3,
       id: "fireColumn",
       cooldown: 9,
-      damage: 1.8,
+      damage: 1.25,
       radius: 90,
       telegraphDuration: 0.8,
       color: "#fff2a8",
