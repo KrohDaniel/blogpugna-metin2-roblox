@@ -3277,9 +3277,22 @@ function hostKillMob(mob) {
     api.remove(api.ref(api.database, `${worldRefs.base}/mobs/${mob.serverId}`));
   }
   const owner = topDamager(mob.dmgBy);
-  dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"), owner);
+  // Boss/Miniboss: Loot teilt sich auf alle Beiträger; normale Mobs → Top-Damager
+  const splitDmg = (mob.rank === "boss" || mob.rank === "miniboss") ? mob.dmgBy : null;
+  dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"), owner, splitDmg);
   const xpReward = mob.xp || (mob.rank === "boss" ? 400 : mob.rank === "miniboss" ? 120 : mob.elite ? 30 : 12);
-  pushGrant(owner || authUser, { xp: xpReward, kill: "mob" });
+  // XP bei Boss/Miniboss an ALLE Beiträger (geteilt), sonst Top-Damager
+  if (splitDmg) {
+    const list = contributorList(splitDmg);
+    if (list.length > 1) {
+      const share = Math.max(1, Math.round(xpReward / list.length));
+      for (const name of list) pushGrant(name, { xp: share, kill: "mob" });
+    } else {
+      pushGrant(owner || authUser, { xp: xpReward, kill: "mob" });
+    }
+  } else {
+    pushGrant(owner || authUser, { xp: xpReward, kill: "mob" });
+  }
   burst(mob.x, mob.y, mob.color || "#ff6b6b", mob.rank === "boss" ? 70 : mob.rank === "miniboss" ? 42 : 24);
   // Boss: Pet-Unlock + Cinematic auch im Multiplayer (loot=false, dropLoot lief schon oben)
   if (mob.bossDef) {
@@ -3300,8 +3313,15 @@ function hostKillStone(stone) {
     api.remove(api.ref(api.database, `${worldRefs.base}/stones/${stone.serverId}`));
   }
   const owner = topDamager(stone.dmgBy);
-  dropLoot(stone.x, stone.y, "metin", owner);
-  pushGrant(owner || authUser, { xp: 90, kill: "stone" });
+  // Metin-Stein: Loot + XP teilen sich auf alle Beiträger
+  dropLoot(stone.x, stone.y, "metin", owner, stone.dmgBy);
+  const stoneList = contributorList(stone.dmgBy);
+  if (stoneList.length > 1) {
+    const share = Math.max(1, Math.round(90 / stoneList.length));
+    for (const name of stoneList) pushGrant(name, { xp: share, kill: "stone" });
+  } else {
+    pushGrant(owner || authUser, { xp: 90, kill: "stone" });
+  }
   burst(stone.x, stone.y, "#c084fc", 50);
   showToast("Metin-Stein zerstoert: seltener Loot liegt am Boden.");
   setTimeout(() => {
@@ -5583,7 +5603,7 @@ function armorDrop(source) {
   return "leather_armor";
 }
 
-function dropLoot(x, y, source, owner = null) {
+function dropLoot(x, y, source, owner = null, dmgBy = null) {
   const { drops: dropIds, gold: goldAmount } = rollDrops(currentWorldId, source);
   // Aggregiere zu Inventar-Eintraegen
   const counts = {};
@@ -5594,7 +5614,30 @@ function dropLoot(x, y, source, owner = null) {
   const runeDrop = rollRuneDrop(source);
   if (runeDrop) drops.push({ id: runeDrop, count: 1 });
 
-  return spawnDropEntries(x, y, drops, goldAmount, owner);
+  // Uraltes Relikt (legendäres Upgrade-Material): Bosse + Metin höherer Welten
+  const order = ["meadows", "frostwastes", "emberforge", "shadowfen", "skyspire", "tideklippen"];
+  const wi = Math.max(0, order.indexOf(currentWorldId));
+  let relicChance = 0;
+  if (source === "boss") relicChance = wi >= 3 ? 1.0 : 0.6;
+  else if (source === "miniboss") relicChance = wi >= 2 ? 0.4 : 0.15;
+  else if (source === "metin") relicChance = wi >= 2 ? 0.12 : 0.03;
+  if (relicChance > 0 && Math.random() < relicChance) {
+    const amount = source === "boss" ? (1 + Math.floor(Math.random() * 2)) : 1;
+    drops.push({ id: "ancient_relic", count: amount });
+  }
+
+  // Beitrags-Liste: bei Boss/Metin teilt sich der Loot auf alle Schadens-Beiträger
+  const contributors = contributorList(dmgBy);
+  return spawnDropEntries(x, y, drops, goldAmount, owner, contributors);
+}
+
+// Sortierte Liste der Schadens-Beiträger (höchster zuerst). Leer = Solo.
+function contributorList(dmgBy) {
+  if (!dmgBy) return [];
+  return Object.entries(dmgBy)
+    .filter(([, d]) => d > 0)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name]) => name);
 }
 
 // Runen-Drop-Logik: Quelle + Welt bestimmen Chance + Tier-Verteilung.
@@ -5626,19 +5669,27 @@ function rollRuneDrop(source) {
   return runeId(type, tier);
 }
 
-function spawnDropEntries(x, y, drops, goldAmount, owner) {
+function spawnDropEntries(x, y, drops, goldAmount, owner, contributors = []) {
   if (multiplayerReady && isHost) {
-    for (const drop of drops.filter((entry) => entry.count > 0)) {
+    const list = drops.filter((entry) => entry.count > 0);
+    // Loot-Split: mehrere Beiträger → Items reihum verteilen, jeder kriegt eigene reservierte Drops
+    const splitOwners = contributors.length > 1 ? contributors : null;
+    list.forEach((drop, idx) => {
+      const dropOwner = splitOwners ? splitOwners[idx % splitOwners.length] : owner;
       publishLoot({
         id: drop.id,
         count: drop.count,
-        x: x + (Math.random() - 0.5) * 54,
-        y: y + (Math.random() - 0.5) * 54,
-        owner,
-        ownerLockUntil: owner ? Date.now() + 6000 : 0,
+        x: x + (Math.random() - 0.5) * 80,
+        y: y + (Math.random() - 0.5) * 80,
+        owner: dropOwner,
+        ownerLockUntil: dropOwner ? Date.now() + 6000 : 0,
       });
-    }
-    if (owner) {
+    });
+    // Gold gleichmäßig auf alle Beiträger aufteilen
+    if (splitOwners) {
+      const share = Math.max(1, Math.floor(goldAmount / splitOwners.length));
+      for (const name of splitOwners) pushGrant(name, { gold: share });
+    } else if (owner) {
       pushGrant(owner, { gold: goldAmount });
     } else {
       player.gold += goldAmount;
@@ -6073,12 +6124,17 @@ function confirmMerge() {
   saveCurrentCharacter();
 }
 
-function upgradeCost(nextLevel, kind) {
+function upgradeCost(nextLevel, kind, rarity = "common") {
+  // Legendäre Items: deutlich teurer + brauchen Uralte Relikte (Boss-Material)
+  const legendary = rarity === "legendary";
+  const goldBase = kind === "armor" ? 18 : 24;
   return {
-    gold: (kind === "armor" ? 18 : 24) * nextLevel,
-    shards: Math.ceil(nextLevel / 2),
+    gold: Math.round(goldBase * nextLevel * (legendary ? 2.5 : 1)),
+    shards: Math.ceil(nextLevel / 2) * (legendary ? 2 : 1),
     gems: nextLevel >= 4 ? Math.ceil((nextLevel - 3) / 2) : 0,
     cores: nextLevel >= 7 ? 1 : 0,
+    // Relikte ab +4 bei Legendären (1 pro Stufe ab +4, 2 ab +7)
+    relics: legendary && nextLevel >= 4 ? (nextLevel >= 7 ? 2 : 1) : 0,
   };
 }
 
@@ -6149,18 +6205,20 @@ function renderSmithSlot() {
     }
     return;
   }
-  const cost = upgradeCost(nextLvl, kind);
+  const cost = upgradeCost(nextLvl, kind, def.rarity);
   const have = {
     gold: player.gold || 0,
     shards: inventoryCount("metin_shard"),
     gems: inventoryCount("gem"),
     cores: inventoryCount("pugna_core"),
+    relics: inventoryCount("ancient_relic"),
   };
   const rows = [
     ["Gold", cost.gold, have.gold, "#f4c95d"],
     ["Metin-Splitter", cost.shards, have.shards, "#9ee7ff"],
     ["Kristall", cost.gems, have.gems, "#7dd3fc"],
     ["Pugna-Kern", cost.cores, have.cores, "#c084fc"],
+    ["Uraltes Relikt", cost.relics || 0, have.relics, "#fde047"],
   ];
   if (ui.smithCostList) {
     ui.smithCostList.innerHTML = `<strong>Kosten fuer +${nextLvl}</strong>` + rows.filter(([, need]) => need > 0).map(([label, need, has, color]) => {
@@ -6202,9 +6260,11 @@ function smithUpgradeSelected() {
     showToast("Max-Level erreicht.");
     return;
   }
-  const cost = upgradeCost(nextLvl, kind);
+  const cost = upgradeCost(nextLvl, kind, def.rarity);
   if (!canPayUpgrade(cost)) {
-    showToast("Materialien fehlen.");
+    showToast(cost.relics > 0 && inventoryCount("ancient_relic") < cost.relics
+      ? `Brauchst ${cost.relics}× Uraltes Relikt (von Bossen/Metin-Steinen).`
+      : "Materialien fehlen.");
     return;
   }
   payUpgrade(cost);
@@ -6237,7 +6297,8 @@ function canPayUpgrade(cost) {
   return player.gold >= cost.gold
     && inventoryCount("metin_shard") >= cost.shards
     && inventoryCount("gem") >= cost.gems
-    && inventoryCount("pugna_core") >= cost.cores;
+    && inventoryCount("pugna_core") >= cost.cores
+    && inventoryCount("ancient_relic") >= (cost.relics || 0);
 }
 
 function payUpgrade(cost) {
@@ -6245,6 +6306,7 @@ function payUpgrade(cost) {
   removeInventory("metin_shard", cost.shards);
   removeInventory("gem", cost.gems);
   removeInventory("pugna_core", cost.cores);
+  if (cost.relics) removeInventory("ancient_relic", cost.relics);
 }
 
 function inventoryCount(id) {

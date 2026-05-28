@@ -71,6 +71,8 @@ export const itemDefs = {
   shadow_essence: { name: "Schatten-Essenz", icon: "☘", type: "material", rarity: "epic", color: "#84a665", breakReduce: 0.16, source: "shadowfen" },
   sky_shard: { name: "Sturm-Splitter", icon: "⚡", type: "material", rarity: "epic", color: "#ddd6fe", breakReduce: 0.22, source: "skyspire" },
   tide_pearl: { name: "Tide-Perle", icon: "💧", type: "material", rarity: "epic", color: "#22d3ee", breakReduce: 0.25, source: "tideklippen" },
+  // Legendäres Upgrade-Material: nur von Bossen + Metin-Steinen höherer Welten
+  ancient_relic: { name: "Uraltes Relikt", icon: "🏆", type: "material", rarity: "legendary", color: "#fde047" },
 };
 
 // === Runen als Items generieren (type × tier) ===
