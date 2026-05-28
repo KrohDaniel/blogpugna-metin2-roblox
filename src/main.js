@@ -1436,6 +1436,7 @@ resizeCanvas();
 
 window.addEventListener("keydown", (event) => {
   if (event.target instanceof HTMLInputElement) return;
+  if (!event.key) return; // manche synthetische Events haben keine key
   keys.add(event.key.toLowerCase());
   if (event.code === "Space") {
     event.preventDefault();
@@ -1502,7 +1503,7 @@ ui.overlayBackdrop?.addEventListener("click", closeAllOverlays);
 ui.actionPotion?.addEventListener("click", () => usePotion());
 ui.actionSmith?.addEventListener("click", () => useBlacksmith());
 
-window.addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
+window.addEventListener("keyup", (event) => { if (event.key) keys.delete(event.key.toLowerCase()); });
 
 canvas.addEventListener("mousemove", (event) => {
   const rect = canvas.getBoundingClientRect();
