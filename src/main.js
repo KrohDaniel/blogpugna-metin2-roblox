@@ -2207,11 +2207,13 @@ function showItemTooltip(slot) {
   const action = slot.dataset.tooltipAction || "";
   const color = slot.style.getPropertyValue("--item-color") || "#f4f0df";
   const affixes = slot.dataset.tooltipAffixes || "";
+  const sockets = slot.dataset.tooltipSockets || "";
   ui.itemTooltip.innerHTML = `
     <strong style="color:${color}">${name}</strong>
     <small class="tt-rarity">${rarity}</small>
     <span class="tt-stat">${stat}</span>
     ${affixes ? `<span class="tt-affixes">${affixes}</span>` : ""}
+    ${sockets ? `<span class="tt-sockets">${sockets}</span>` : ""}
     ${action ? `<span class="tt-action">${action}</span>` : ""}
   `;
   const rect = slot.getBoundingClientRect();
@@ -7083,18 +7085,28 @@ function renderInventoryInto(target) {
     }
     const attackVal = def.attack ? def.attack + (invItem.upgrade || 0) * 3 : 0;
     const defenseVal = def.defense ? def.defense + (invItem.upgrade || 0) * 4 : 0;
-    const statLine = attackVal
-      ? `+${attackVal} Angriff`
-      : defenseVal
-        ? `+${defenseVal} Verteidigung`
-        : def.heal
-          ? `+${def.heal} HP`
-          : "Material";
+    let statLine;
+    if (def.type === "rune") {
+      const r = parseRune(invItem.id);
+      const v = r ? runeValue(r.type, r.tier) : 0;
+      const valStr = r && r.def.suffix === "%" ? `+${Math.round(v * 100)}%` : `+${Math.round(v)}`;
+      statLine = r ? `${valStr} ${r.def.desc.replace("+", "")}` : "Rune";
+    } else {
+      statLine = attackVal
+        ? `+${attackVal} Angriff`
+        : defenseVal
+          ? `+${defenseVal} Verteidigung`
+          : def.heal
+            ? `+${def.heal} HP`
+            : "Material";
+    }
     const action = def.type === "weapon" || def.type === "armor"
-      ? "Klick zum ausruesten"
+      ? "Klick: ausruesten"
       : def.type === "potion"
-        ? "Klick zum nutzen"
-        : "";
+        ? "Klick: nutzen"
+        : def.type === "rune"
+          ? "Klick: in Waffe sockeln"
+          : "";
     slot.title = `${itemLabel(invItem)} — ${statLine}${action ? " — " + action : ""}`;
     slot.setAttribute("aria-label", slot.title);
     slot.dataset.tooltipName = itemLabel(invItem);
@@ -7103,6 +7115,23 @@ function renderInventoryInto(target) {
     slot.dataset.tooltipAction = action;
     const affixStr = invItem.affixes ? Object.entries(invItem.affixes).map(([k, v]) => `+${Math.round(v * 100)}% ${affixCatalog[k]?.label || k}`).join(" • ") : "";
     slot.dataset.tooltipAffixes = affixStr;
+    // Waffen: Sockel-Status + Runen + aktives Runen-Wort + Signatur + Klassen-Match
+    if (def.type === "weapon") {
+      const maxS = weaponSocketCount(invItem);
+      const socks = invItem.sockets || [];
+      let sockText = "";
+      if (maxS > 0) {
+        const filled = socks.map((rid) => runeLabel(rid)).join(", ");
+        sockText = `Sockel ${socks.length}/${maxS}${filled ? ": " + filled : " (leer)"}`;
+      }
+      const word = activeRuneWord(socks);
+      const wordText = word ? `★ ${word.name}: ${word.desc}` : "";
+      const sig = def.signature && signatureDefs[def.signature] ? `⭐ ${signatureDefs[def.signature].desc}` : "";
+      const match = weaponClassMatch(def, player.classId) === 1 ? "✓ passt zu deiner Klasse" : "⚠ Fremd-Waffe (75% Schaden)";
+      slot.dataset.tooltipSockets = [sockText, wordText, sig, match].filter(Boolean).join(" | ");
+    } else {
+      slot.dataset.tooltipSockets = "";
+    }
     const upgrade = invItem.upgrade ? `<span class="upgrade">+${invItem.upgrade}</span>` : "";
     const badge = `<span class="type-badge">${typeBadges[def.type] || ""}</span>`;
     const affix = invItem.affixes && Object.keys(invItem.affixes).length ? `<span class="affix-dot" title="${Object.keys(invItem.affixes).length} Affixe"></span>` : "";
