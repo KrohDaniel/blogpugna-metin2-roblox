@@ -1,6 +1,6 @@
 import { DEFAULT_CLASS_ID, classDefs, getClassDef } from "./data/classes.js";
 import { abilityDefs, getAbilityDef } from "./data/abilities.js";
-import { MAX_STACK, item, itemDefs, typeBadges, rarityLabels, affixCatalog, rollAffixes, weaponClassMatch, weaponSocketCount, signatureDefs } from "./data/items.js";
+import { MAX_STACK, item, itemDefs, typeBadges, rarityLabels, affixCatalog, rollAffixes, weaponClassMatch, weaponSocketCount, signatureDefs, armorTypeMods, classArmorType, armorClassMatch } from "./data/items.js";
 import { runeTypes, runeTiers, parseRune, runeValue, runeLabel, runeColor, activeRuneWord, runeId, tierOrder } from "./data/runes.js";
 import { getTalentTree, abilityMasteryLevel } from "./data/talents.js";
 import { worldDefs, getWorldDef, PORTAL_EDGE_THRESHOLD, getStoneStyle, getPortalColor, getWeather } from "./data/worlds.js";
@@ -381,8 +381,21 @@ function totalDefense() {
   const classDef = getClassDef(player.classId);
   const nearbyThreats = mobs.filter((mob) => dist(player, mob) < 150).length;
   const ironSkin = classDef.id === "warrior" && nearbyThreats >= 3 ? 5 : 0;
-  const base = armor ? (itemDefs[armor.id].defense + (armor.upgrade || 0) * 4) : 0;
-  return base + player.armorLevel * 3 + ironSkin;
+  let base = armor ? (itemDefs[armor.id].defense + (armor.upgrade || 0) * 4) : 0;
+  // Rüstungstyp-Modifikator + Klassen-Affinität
+  if (armor) {
+    const aDef = itemDefs[armor.id];
+    const typeMod = armorTypeMods[aDef.armorType]?.defMult || 1;
+    base = base * typeMod * armorClassMatch(aDef, player.classId);
+  }
+  return Math.round(base + player.armorLevel * 3 + ironSkin);
+}
+
+// Tempo-Modifikator aus dem Rüstungstyp (schwer langsamer, Leder schneller)
+function armorSpeedMult() {
+  const armor = equippedArmorItem();
+  if (!armor) return 1;
+  return armorTypeMods[itemDefs[armor.id]?.armorType]?.speedMult || 1;
 }
 
 function itemLabel(invItem) {
@@ -6644,7 +6657,7 @@ function update(dt) {
   const frostSlow = (player.frostSlowTimer || 0) > 0 ? 0.55 : 1;
   const wolfBoost = (player.wolfForm || 0) > 0 ? 1.6 : 1;
   const museSpeed = (player.museActive || 0) > 0 ? 1.08 : 1;
-  const speedMult = (1 + talentEffect("speedBonus")) * frostSlow * wolfBoost * museSpeed;
+  const speedMult = (1 + talentEffect("speedBonus")) * frostSlow * wolfBoost * museSpeed * armorSpeedMult();
   player.x = clamp(player.x + (move.x / len) * player.speed * speedMult * dt, player.r, world.w - player.r);
   player.y = clamp(player.y + (move.y / len) * player.speed * speedMult * dt, player.r, world.h - player.r);
   player.attackCooldown = Math.max(0, player.attackCooldown - dt);
@@ -7459,6 +7472,10 @@ function renderInventoryInto(target) {
       const sig = def.signature && signatureDefs[def.signature] ? `⭐ ${signatureDefs[def.signature].desc}` : "";
       const match = weaponClassMatch(def, player.classId) === 1 ? "✓ passt zu deiner Klasse" : "⚠ Fremd-Waffe (75% Schaden)";
       slot.dataset.tooltipSockets = [sockText, wordText, sig, match].filter(Boolean).join(" | ");
+    } else if (def.type === "armor" && def.armorType) {
+      const mod = armorTypeMods[def.armorType];
+      const aMatch = armorClassMatch(def, player.classId) >= 1 ? "✓ ideal für deine Klasse" : "⚠ nicht ideal (-10% Verteidigung)";
+      slot.dataset.tooltipSockets = `${mod?.label || def.armorType} — ${mod?.desc || ""} | ${aMatch}`;
     } else {
       slot.dataset.tooltipSockets = "";
     }

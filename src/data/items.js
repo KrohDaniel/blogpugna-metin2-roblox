@@ -24,6 +24,29 @@ export function weaponClassMatch(weaponDef, classId) {
   return wt === want ? 1 : 0.75;
 }
 
+// === RÜSTUNGS-TYPEN ===
+export const armorTypeMods = {
+  leder:  { label: "Leder",           defMult: 0.85, speedMult: 1.08, desc: "+8% Tempo, -15% Verteidigung" },
+  leicht: { label: "Leichte Ruestung", defMult: 1.0,  speedMult: 1.0,  desc: "ausgewogen" },
+  schwer: { label: "Schwere Ruestung", defMult: 1.35, speedMult: 0.92, desc: "+35% Verteidigung, -8% Tempo" },
+};
+
+export const classArmorType = {
+  warrior: "schwer",
+  shadow: "leder",
+  runemage: "leicht",
+  druid: "leder",
+  charmer: "leicht",
+};
+
+// Affinitaet: passt = +10% Verteidigung, sonst -10%
+export function armorClassMatch(armorDef, classId) {
+  if (!armorDef || !armorDef.armorType) return 1;
+  const want = classArmorType[classId];
+  if (!want) return 1;
+  return armorDef.armorType === want ? 1.10 : 0.90;
+}
+
 export const itemDefs = {
   health_potion: { name: "Roter Trank", icon: "🧪", type: "potion", rarity: "common", heal: 32, color: "#ff5d62" },
   // === KRIEGER · Schwert-Leiter ===
