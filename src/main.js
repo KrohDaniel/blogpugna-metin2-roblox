@@ -2024,6 +2024,16 @@ document.querySelector("#socketReturn")?.addEventListener("click", () => {
   renderInventory();
 });
 
+// Handels-System Buttons
+document.getElementById("tradeButton")?.addEventListener("click", (e) => {
+  const partner = e.currentTarget.dataset.partner;
+  if (partner) startTrade(partner);
+});
+document.getElementById("tradeReady")?.addEventListener("click", setTradeReady);
+document.getElementById("tradeCancel")?.addEventListener("click", cancelTrade);
+document.getElementById("tradeCancelBtn")?.addEventListener("click", cancelTrade);
+document.getElementById("tradeMyGold")?.addEventListener("change", () => { if (activeTrade) resetReadyAndSync(); });
+
 document.querySelectorAll("[data-smith-mode]").forEach((btn) => {
   btn.addEventListener("click", () => applySmithMode(btn.dataset.smithMode));
 });
@@ -3239,6 +3249,214 @@ function topDamager(dmgBy) {
     if (dmg > best) { best = dmg; winner = name; }
   }
   return winner;
+}
+
+// ===== HANDELS-SYSTEM =====
+let activeTrade = null; // { partner, ref, side, offerIdx:Set, gold, theirOffer, theirGold, theirReady, myReady, applied }
+let tradeUnsub = null;
+
+function tradePairId(a, b) {
+  return [a, b].sort().join("__");
+}
+
+// Naechster Remote-Spieler in Handels-Reichweite (gleiche Welt)
+function nearestTradePartner() {
+  if (!multiplayerReady || player.hp <= 0) return null;
+  let best = null, bd = 90;
+  for (const [name, r] of Object.entries(remotePlayers)) {
+    if (!r || (r.worldId && r.worldId !== currentWorldId)) continue;
+    const d = Math.hypot((r.x || 0) - player.x, (r.y || 0) - player.y);
+    if (d < bd) { bd = d; best = name; }
+  }
+  return best;
+}
+
+function updateTradeButton() {
+  const btn = document.getElementById("tradeButton");
+  if (!btn) return;
+  if (activeTrade) { btn.classList.add("hidden"); return; }
+  const partner = nearestTradePartner();
+  if (partner) {
+    btn.classList.remove("hidden");
+    const nameEl = document.getElementById("tradePartnerName");
+    if (nameEl) nameEl.textContent = partner;
+    btn.dataset.partner = partner;
+  } else {
+    btn.classList.add("hidden");
+  }
+}
+
+function startTrade(partner) {
+  const api = firebaseApi();
+  if (!api || !worldRefs || !partner) return;
+  const pairId = tradePairId(authUser, partner);
+  const ref = api.ref(api.database, `${worldRefs.base}/trades/${pairId}`);
+  const side = authUser < partner ? "A" : "B";
+  activeTrade = { partner, ref, side, offerIdx: new Set(), gold: 0, theirOffer: [], theirGold: 0, theirReady: false, myReady: false, applied: false };
+  // Eigene Seite initialisieren
+  writeMyTrade();
+  tradeUnsub = api.onValue(ref, (snap) => onTradeUpdate(snap.val()));
+  document.getElementById("tradeOverlay")?.classList.remove("hidden");
+  document.getElementById("overlayBackdrop")?.classList.remove("hidden");
+  const nameTags = [document.getElementById("tradeWithName"), document.getElementById("tradePartnerHead")];
+  nameTags.forEach((e) => { if (e) e.textContent = partner; });
+  renderTradeOverlay();
+}
+
+function offerEntryFor(idx) {
+  const e = player.inventory[idx];
+  if (!e) return null;
+  return { id: e.id, count: e.count || 1, upgrade: e.upgrade || 0, affixes: e.affixes || null, sockets: e.sockets || null };
+}
+
+function writeMyTrade() {
+  if (!activeTrade) return;
+  const items = [...activeTrade.offerIdx].map(offerEntryFor).filter(Boolean);
+  const payload = { items, gold: Math.max(0, Math.min(player.gold, activeTrade.gold || 0)), ready: activeTrade.myReady };
+  const key = activeTrade.side === "A" ? "offerA" : "offerB";
+  const readyKey = activeTrade.side === "A" ? "readyA" : "readyB";
+  const api = firebaseApi();
+  // Nur die eigenen Felder aktualisieren (Partner schreibt seine)
+  api.update(activeTrade.ref, { a: tradePartnerA(), b: tradePartnerB(), [key]: payload, [readyKey]: activeTrade.myReady, ts: Date.now() });
+}
+
+function tradePartnerA() { return activeTrade.side === "A" ? authUser : activeTrade.partner; }
+function tradePartnerB() { return activeTrade.side === "A" ? activeTrade.partner : authUser; }
+
+function onTradeUpdate(data) {
+  if (!activeTrade || !data) { return; }
+  const theirKey = activeTrade.side === "A" ? "offerB" : "offerA";
+  const theirReadyKey = activeTrade.side === "A" ? "readyB" : "readyA";
+  const theirs = data[theirKey] || { items: [], gold: 0 };
+  activeTrade.theirOffer = theirs.items || [];
+  activeTrade.theirGold = theirs.gold || 0;
+  activeTrade.theirReady = !!data[theirReadyKey];
+  // Beide bereit + noch nicht angewendet → Tausch ausfuehren
+  if (data.readyA && data.readyB && !activeTrade.applied) {
+    activeTrade.applied = true;
+    executeTrade();
+    return;
+  }
+  renderTradeOverlay();
+}
+
+function executeTrade() {
+  // Eigene angebotene Items entfernen (hohe Indizes zuerst)
+  const indices = [...activeTrade.offerIdx].sort((a, b) => b - a);
+  for (const idx of indices) {
+    if (player.weaponIndex === idx) player.weaponIndex = -1;
+    if (player.armorIndex === idx) player.armorIndex = -1;
+    player.inventory.splice(idx, 1);
+    if (player.weaponIndex > idx) player.weaponIndex -= 1;
+    if (player.armorIndex > idx) player.armorIndex -= 1;
+  }
+  player.gold = Math.max(0, player.gold - (activeTrade.gold || 0));
+  // Erhaltene Items einbuchen
+  for (const it of activeTrade.theirOffer) {
+    player.inventory.push({ id: it.id, count: it.count || 1, upgrade: it.upgrade || 0, ...(it.affixes ? { affixes: it.affixes } : {}), ...(it.sockets ? { sockets: it.sockets } : {}) });
+  }
+  player.gold += activeTrade.theirGold || 0;
+  showToast(`Handel mit ${activeTrade.partner} abgeschlossen!`);
+  sfx.pickup?.();
+  saveCurrentCharacter();
+  // Trade-Knoten aufraeumen (eine Seite genuegt)
+  const api = firebaseApi();
+  if (activeTrade.side === "A") setTimeout(() => api.set(activeTrade.ref, null), 600);
+  closeTrade();
+  renderInventory();
+  updateUi();
+}
+
+function renderTradeOverlay() {
+  if (!activeTrade) return;
+  // Mein Angebot
+  const myEl = document.getElementById("tradeMyOffer");
+  if (myEl) {
+    myEl.innerHTML = "";
+    for (const idx of activeTrade.offerIdx) {
+      const e = player.inventory[idx];
+      if (!e) continue;
+      const def = itemDefs[e.id];
+      const d = document.createElement("div");
+      d.className = "trade-item";
+      d.style.color = def?.color || "#fff";
+      d.innerHTML = `${def?.icon || "?"}<span class="tcount">${e.count > 1 ? e.count : ""}</span>`;
+      d.title = "Klick: zurueck ins Inventar";
+      d.addEventListener("click", () => { activeTrade.offerIdx.delete(idx); resetReadyAndSync(); });
+      myEl.append(d);
+    }
+  }
+  // Partner-Angebot
+  const theirEl = document.getElementById("tradeTheirOffer");
+  if (theirEl) {
+    theirEl.innerHTML = "";
+    for (const it of activeTrade.theirOffer) {
+      const def = itemDefs[it.id];
+      const d = document.createElement("div");
+      d.className = "trade-item";
+      d.style.color = def?.color || "#fff";
+      d.innerHTML = `${def?.icon || "?"}<span class="tcount">${it.count > 1 ? it.count : ""}</span>`;
+      d.title = `${def?.name || it.id}${it.upgrade ? " +" + it.upgrade : ""}`;
+      theirEl.append(d);
+    }
+  }
+  const tg = document.getElementById("tradeTheirGold");
+  if (tg) tg.textContent = `Gold: ${activeTrade.theirGold || 0}`;
+  const myTag = document.getElementById("tradeMyReadyTag");
+  if (myTag) { myTag.textContent = activeTrade.myReady ? "bereit ✓" : "nicht bereit"; myTag.classList.toggle("ready", activeTrade.myReady); }
+  const theirTag = document.getElementById("tradeTheirReadyTag");
+  if (theirTag) { theirTag.textContent = activeTrade.theirReady ? "bereit ✓" : "nicht bereit"; theirTag.classList.toggle("ready", activeTrade.theirReady); }
+  // Inventar (klickbar)
+  const inv = document.getElementById("tradeInventory");
+  if (inv) {
+    inv.innerHTML = "";
+    player.inventory.forEach((e, idx) => {
+      if (!e || activeTrade.offerIdx.has(idx)) return;
+      const def = itemDefs[e.id];
+      if (!def) return;
+      const slot = document.createElement("button");
+      slot.type = "button";
+      slot.className = `slot ${def.rarity || ""}`;
+      slot.style.setProperty("--item-color", def.color || "#fff");
+      slot.innerHTML = `<span class="icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span><span class="count">${e.count}</span>`;
+      slot.title = `${itemLabel(e)} — Klick: anbieten`;
+      slot.addEventListener("click", () => { activeTrade.offerIdx.add(idx); resetReadyAndSync(); });
+      inv.append(slot);
+    });
+  }
+}
+
+function resetReadyAndSync() {
+  if (!activeTrade) return;
+  activeTrade.myReady = false; // Angebots-Aenderung setzt Bereitschaft zurueck
+  const gInput = document.getElementById("tradeMyGold");
+  if (gInput) activeTrade.gold = Math.max(0, parseInt(gInput.value, 10) || 0);
+  writeMyTrade();
+  renderTradeOverlay();
+}
+
+function setTradeReady() {
+  if (!activeTrade) return;
+  const gInput = document.getElementById("tradeMyGold");
+  if (gInput) activeTrade.gold = Math.max(0, Math.min(player.gold, parseInt(gInput.value, 10) || 0));
+  activeTrade.myReady = !activeTrade.myReady;
+  writeMyTrade();
+  renderTradeOverlay();
+}
+
+function closeTrade() {
+  if (tradeUnsub) { try { tradeUnsub(); } catch {} tradeUnsub = null; }
+  activeTrade = null;
+  document.getElementById("tradeOverlay")?.classList.add("hidden");
+  document.getElementById("overlayBackdrop")?.classList.add("hidden");
+}
+
+function cancelTrade() {
+  if (activeTrade) {
+    const api = firebaseApi();
+    try { api.set(activeTrade.ref, null); } catch {}
+  }
+  closeTrade();
 }
 
 function applyQueuedHit(hit) {
@@ -6897,6 +7115,7 @@ function update(dt) {
   }
 
   interpolateRemoteMobs(dt);
+  updateTradeButton();
   updateParticles(dt);
   updateProjectiles(dt);
   updateSkillFlashes(dt);

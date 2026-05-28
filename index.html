@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=armor-types" />
+    <link rel="stylesheet" href="styles.css?v=trade-system" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -161,6 +161,9 @@
             <button id="deathRestart" type="button">▶ Neustart</button>
           </div>
         </div>
+
+        <!-- Handeln-Button (poppt auf wenn ein Spieler in der Naehe ist) -->
+        <button id="tradeButton" type="button" class="trade-button hidden">🤝 Handeln mit <span id="tradePartnerName">—</span></button>
 
         <!-- Mobile-Menue (klappt aus, ersetzt hud-toggles auf Mobile) -->
         <div id="touchMenuPanel" class="touch-menu-panel hidden" aria-hidden="true">
@@ -497,9 +500,38 @@
           </section>
         </div>
       </aside>
+
+      <aside id="tradeOverlay" class="overlay-panel overlay-xwide hidden" aria-label="Handel">
+        <header class="overlay-head">
+          <h2>Handel mit <span id="tradeWithName" class="head-tag">—</span></h2>
+          <button class="overlay-close" id="tradeCancel" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <div class="trade-layout">
+          <section class="trade-side">
+            <h3>Dein Angebot</h3>
+            <div id="tradeMyOffer" class="trade-offer"></div>
+            <label class="trade-gold">Gold: <input id="tradeMyGold" type="number" min="0" value="0" /></label>
+            <div id="tradeMyReadyTag" class="trade-ready-tag">nicht bereit</div>
+          </section>
+          <section class="trade-side">
+            <h3 id="tradePartnerHead">Partner</h3>
+            <div id="tradeTheirOffer" class="trade-offer their"></div>
+            <div id="tradeTheirGold" class="trade-gold-display">Gold: 0</div>
+            <div id="tradeTheirReadyTag" class="trade-ready-tag">nicht bereit</div>
+          </section>
+          <section class="trade-inv">
+            <h3>Dein Inventar — klick zum Anbieten</h3>
+            <div class="inv-scroll"><div id="tradeInventory" class="inventory"></div></div>
+          </section>
+        </div>
+        <div class="trade-actions">
+          <button id="tradeReady" type="button" class="primary">Bereit ✓</button>
+          <button id="tradeCancelBtn" type="button">Abbrechen</button>
+        </div>
+      </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=armor-types"></script>
-    <script type="module" src="src/main.js?v=armor-types"></script>
+    <script type="module" src="firebase-config.js?v=trade-system"></script>
+    <script type="module" src="src/main.js?v=trade-system"></script>
   </body>
 </html>
