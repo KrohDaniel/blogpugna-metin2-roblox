@@ -3704,7 +3704,48 @@ function drawSplashScreen() {
   ctx.restore();
 }
 
+function drawWorldBossBar() {
+  // Suche lebenden Boss (geteilt ueber Firebase-Mob-Sync)
+  const boss = mobs.find((m) => m.bossDef && m.hp > 0);
+  if (!boss) return;
+  const cw = canvas.clientWidth;
+  const w = Math.min(560, cw - 40);
+  const x = (cw - w) / 2;
+  const y = 14;
+  const pct = Math.max(0, boss.hp / boss.maxHp);
+  ctx.save();
+  // Name
+  ctx.font = "bold 16px sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#fde047";
+  ctx.shadowColor = "#000";
+  ctx.shadowBlur = 4;
+  const phase = boss.bossPhase || 1;
+  ctx.fillText(`${boss.name}  —  Phase ${phase}`, cw / 2, y + 2);
+  ctx.shadowBlur = 0;
+  // Rahmen
+  ctx.fillStyle = "rgba(10,14,18,0.85)";
+  ctx.fillRect(x - 2, y + 8, w + 4, 18);
+  // HP-Fuellung (Farbe je Phase)
+  const col = phase === 3 ? "#ef4444" : phase === 2 ? "#fb923c" : "#a855f7";
+  const grad = ctx.createLinearGradient(x, 0, x + w, 0);
+  grad.addColorStop(0, col);
+  grad.addColorStop(1, "#fde047");
+  ctx.fillStyle = grad;
+  ctx.fillRect(x, y + 10, w * pct, 14);
+  // Rahmen-Linie
+  ctx.strokeStyle = "rgba(253,224,71,0.6)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y + 10, w, 14);
+  // HP-Zahl
+  ctx.font = "bold 11px sans-serif";
+  ctx.fillStyle = "#fff";
+  ctx.fillText(`${Math.ceil(boss.hp)} / ${boss.maxHp}`, cw / 2, y + 21);
+  ctx.restore();
+}
+
 function drawComboHud() {
+  drawWorldBossBar();
   drawComboMeterBar();
   drawClassResource();
   if (comboCount < 2) return;
