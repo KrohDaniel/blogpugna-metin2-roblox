@@ -1759,7 +1759,7 @@ window.addEventListener("resize", resizeCanvas);
 resizeCanvas();
 
 window.addEventListener("keydown", (event) => {
-  if (event.target instanceof HTMLInputElement) return;
+  if (event.target instanceof HTMLInputElement || event.target instanceof HTMLSelectElement) return;
   if (!event.key) return; // manche synthetische Events haben keine key
   keys.add(event.key.toLowerCase());
   if (event.code === "Space") {
@@ -2420,7 +2420,7 @@ document.querySelector("#traderList")?.addEventListener("click", (event) => {
 });
 document.querySelector("#trainerResetBtn")?.addEventListener("click", trainerReset);
 document.querySelector("#petToggleBtn")?.addEventListener("click", togglePet);
-document.querySelector("#petSelect")?.addEventListener("change", (e) => setActivePet(e.target.value));
+document.querySelector("#petSelect")?.addEventListener("change", (e) => { setActivePet(e.target.value); e.target.blur(); });
 document.querySelector("#petActiveBtn")?.addEventListener("click", triggerPetActive);
 
 ui.talentList?.addEventListener("click", (event) => {
