@@ -3412,3 +3412,17 @@ body.is-touch:has(.class-overlay:not(.hidden)) #mobileHud {
 
 .gamble-meter-row.gamble-chances { align-items: flex-start; }
 .gamble-meter-row.gamble-chances strong { text-align: right; font-size: 11px; line-height: 1.5; max-width: 70%; font-weight: 800; }
+
+/* Charakter-Vorschau */
+.char-preview-wrap {
+  display: grid; place-items: center;
+  background: radial-gradient(circle at 50% 35%, rgba(124,58,237,0.15), rgba(10,14,22,0.6));
+  border: 1px solid #3a4656; border-radius: 12px;
+  padding: 8px; margin: 8px 0;
+}
+#charPreview { width: 160px; height: 176px; image-rendering: pixelated; }
+/* Stats kompakter */
+.char-stats-compact { gap: 4px !important; }
+.char-stats-compact > div { padding: 4px 6px !important; }
+.char-stats-compact > div span { font-size: 9px !important; }
+.char-stats-compact > div strong { font-size: 12px !important; }

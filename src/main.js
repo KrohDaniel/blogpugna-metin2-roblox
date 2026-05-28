@@ -7666,6 +7666,69 @@ function updateCharOverlay(totalDef) {
   updateEquipSlot(ui.equipWeaponSlot, equippedWeaponItem());
   updateEquipSlot(ui.equipArmorSlot, equippedArmorItem(), "armor");
   renderPetSlot();
+  renderCharPreview();
+}
+
+// Charakter-Vorschau im Charakter-Menü: Spieler-Modell + ausgeruestete Waffe
+function renderCharPreview() {
+  const cv = document.getElementById("charPreview");
+  if (!cv) return;
+  const p = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  p.clearRect(0, 0, W, H);
+  const classDef = getClassDef(player.classId);
+  const cx = W / 2, cy = H * 0.58;
+  const s = 1.7; // Skalierung
+  // Schatten
+  p.fillStyle = "rgba(0,0,0,0.3)";
+  p.beginPath(); p.ellipse(cx, cy + 34 * s, 24 * s, 6 * s, 0, 0, Math.PI * 2); p.fill();
+  const legColor = classDef.id === "warrior" ? "#5d2f28" : classDef.id === "shadow" ? "#26214f" : classDef.id === "charmer" ? "#1a1830" : "#21513d";
+  // Beine
+  p.fillStyle = legColor;
+  p.fillRect(cx - 16 * s, cy + 8 * s, 12 * s, 24 * s);
+  p.fillRect(cx + 4 * s, cy + 8 * s, 12 * s, 24 * s);
+  // Körper
+  p.fillStyle = classDef.color;
+  p.fillRect(cx - 18 * s, cy - 22 * s, 36 * s, 34 * s);
+  // Arme
+  p.fillStyle = "#f3c7a1";
+  p.fillRect(cx - 32 * s, cy - 18 * s, 12 * s, 32 * s);
+  p.fillRect(cx + 20 * s, cy - 18 * s, 12 * s, 32 * s);
+  // Kopf
+  p.fillStyle = "#f3c7a1";
+  p.fillRect(cx - 15 * s, cy - 54 * s, 30 * s, 30 * s);
+  // Augen
+  p.fillStyle = "#14181f";
+  p.fillRect(cx - 7 * s, cy - 43 * s, 4 * s, 4 * s);
+  p.fillRect(cx + 3 * s, cy - 43 * s, 4 * s, 4 * s);
+  // Klassen-Accessoire
+  const acc = classDef.bodyAccent, ac = classDef.accent || "#c9ced8";
+  p.fillStyle = ac;
+  if (acc === "horned-helm") { p.fillRect(cx - 17 * s, cy - 60 * s, 34 * s, 10 * s); p.fillRect(cx - 20 * s, cy - 66 * s, 6 * s, 8 * s); p.fillRect(cx + 14 * s, cy - 66 * s, 6 * s, 8 * s); }
+  else if (acc === "hood") { p.fillRect(cx - 17 * s, cy - 58 * s, 34 * s, 14 * s); }
+  else if (acc === "wizard-hat") { p.fillRect(cx - 18 * s, cy - 60 * s, 36 * s, 8 * s); p.fillRect(cx - 12 * s, cy - 72 * s, 24 * s, 14 * s); p.fillRect(cx - 6 * s, cy - 82 * s, 12 * s, 12 * s); }
+  else if (acc === "diadem") { p.fillRect(cx - 14 * s, cy - 58 * s, 28 * s, 4 * s); p.fillStyle = "#ec4899"; p.fillRect(cx - 2 * s, cy - 60 * s, 4 * s, 3 * s); p.fillStyle = "#1a1830"; p.fillRect(cx - 22 * s, cy - 46 * s, 6 * s, 14 * s); p.fillRect(cx + 16 * s, cy - 46 * s, 6 * s, 14 * s); }
+  // Ausgeruestete Waffe (rechts neben dem Charakter)
+  const w = currentWeapon();
+  const wx = cx + 30 * s, wy = cy - 6 * s;
+  p.save();
+  p.translate(wx, wy);
+  const style = w.style || classDef.weaponStyle;
+  if (style === "staff") {
+    p.fillStyle = w.color || "#9ee7ff"; p.fillRect(-3, -34, 6, 60);
+    p.fillStyle = w.glow || "rgba(85,215,255,0.5)"; p.beginPath(); p.arc(0, -38, 10, 0, Math.PI * 2); p.fill();
+  } else if (style === "dagger") {
+    p.fillStyle = w.color || "#a8b3c7"; p.fillRect(-4, -8, 8, 30); p.fillStyle = "#101419"; p.fillRect(-5, 18, 10, 8);
+  } else if (style === "pole") {
+    p.fillStyle = "#d9dee5"; p.fillRect(-3, -36, 6, 64); p.fillStyle = w.color || "#ec4899"; p.fillRect(-6, -42, 12, 8);
+  } else {
+    p.fillStyle = w.color || "#d9dee5"; p.fillRect(-4, -30, 8, 44); p.fillStyle = "#5a3a26"; p.fillRect(-6, 12, 12, 8);
+  }
+  p.restore();
+  // Name + Klasse unten
+  p.fillStyle = classDef.accent || "#f4f0df";
+  p.font = "bold 12px sans-serif"; p.textAlign = "center";
+  p.fillText(classDef.name, cx, H - 6);
 }
 
 function updateEquipSlot(slot, invItem, kind = "weapon") {
@@ -8688,6 +8751,7 @@ function renderTrader() {
     for (let i = 0; i < player.inventory.length; i += 1) {
       const inv = player.inventory[i];
       if (!inv) continue;
+      if (i === player.weaponIndex || i === player.armorIndex) continue; // ausgeruestetes nicht verkaufbar
       const price = sellPrices[inv.id];
       if (!price) continue;
       const def = itemDefs[inv.id];

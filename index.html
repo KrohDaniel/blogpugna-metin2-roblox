@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=gamble-chances" />
+    <link rel="stylesheet" href="styles.css?v=char-preview" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -271,7 +271,10 @@
               <strong id="classNameTextStats">Krieger</strong>
               <button id="classChange" type="button">Wechseln</button>
             </div>
-            <div class="char-stats" id="charStatGrid">
+            <div class="char-preview-wrap">
+              <canvas id="charPreview" width="200" height="220"></canvas>
+            </div>
+            <div class="char-stats char-stats-compact" id="charStatGrid">
               <div><span>Level</span><strong id="charLevel">1</strong></div>
               <div><span>Gold</span><strong id="charGold">0</strong></div>
               <div><span>Angriff</span><strong id="charAttack">8</strong></div>
@@ -562,7 +565,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=gamble-chances"></script>
-    <script type="module" src="src/main.js?v=gamble-chances"></script>
+    <script type="module" src="firebase-config.js?v=char-preview"></script>
+    <script type="module" src="src/main.js?v=char-preview"></script>
   </body>
 </html>
