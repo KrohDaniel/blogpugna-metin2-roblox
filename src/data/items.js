@@ -58,10 +58,18 @@ export const itemDefs = {
   earthsplitter: { name: "Erdspalter", icon: "⚔", type: "weapon", rarity: "legendary", attack: 30, color: "#f59e0b", glow: "rgba(245,158,11,0.55)", reach: 120, cooldown: 0.40, style: "sword", weaponType: "sword", signature: "earthsplitter" },
   shadowbite: { name: "Schattenbiss", icon: "🗡", type: "weapon", rarity: "legendary", attack: 27, color: "#6f63ff", glow: "rgba(111,99,255,0.55)", reach: 76, cooldown: 0.26, style: "dagger", weaponType: "dagger", signature: "shadowbite" },
   tempest_rod: { name: "Sturmrute", icon: "🪄", type: "weapon", rarity: "legendary", attack: 28, color: "#22d3ee", glow: "rgba(34,211,238,0.55)", reach: 420, cooldown: 0.50, style: "staff", weaponType: "staff", projectile: { speed: 660, color: "#22d3ee", glow: "rgba(34,211,238,0.65)" }, signature: "tempest" },
-  leather_armor: { name: "Lederweste", icon: "🛡", type: "armor", rarity: "common", defense: 4, color: "#a98056" },
-  iron_armor: { name: "Eisenharnisch", icon: "🛡", type: "armor", rarity: "rare", defense: 9, color: "#9ee7ff" },
-  steel_armor: { name: "Stahlpanzer", icon: "🛡", type: "armor", rarity: "epic", defense: 16, color: "#c084fc" },
-  dragon_plate: { name: "Drachenplatte", icon: "🐉", type: "armor", rarity: "legendary", defense: 26, color: "#fff2a8" },
+  // === LEDER (leder): wenig Verteidigung, +Tempo, +Ausweichen — fuer Schatten/Druidin ===
+  leather_armor: { name: "Lederweste", icon: "🦊", type: "armor", rarity: "common", defense: 4, color: "#a98056", armorType: "leder" },
+  hunter_leather: { name: "Jaeger-Leder", icon: "🦊", type: "armor", rarity: "rare", defense: 8, color: "#84a665", armorType: "leder" },
+  shadow_leather: { name: "Schatten-Leder", icon: "🦊", type: "armor", rarity: "epic", defense: 14, color: "#6f63ff", armorType: "leder" },
+  // === LEICHT (leicht): ausgewogen — fuer Magier/Lyra ===
+  iron_armor: { name: "Eisenharnisch", icon: "🛡", type: "armor", rarity: "rare", defense: 9, color: "#9ee7ff", armorType: "leicht" },
+  mage_robe: { name: "Magier-Robe", icon: "🥋", type: "armor", rarity: "common", defense: 5, color: "#7dd3fc", armorType: "leicht" },
+  silk_garb: { name: "Seiden-Gewand", icon: "🥋", type: "armor", rarity: "epic", defense: 15, color: "#ec4899", armorType: "leicht" },
+  // === SCHWER (schwer): viel Verteidigung, -Tempo — fuer Krieger ===
+  steel_armor: { name: "Stahlpanzer", icon: "⚙", type: "armor", rarity: "epic", defense: 16, color: "#c084fc", armorType: "schwer" },
+  knight_plate: { name: "Ritter-Panzer", icon: "⚙", type: "armor", rarity: "rare", defense: 12, color: "#94a3b8", armorType: "schwer" },
+  dragon_plate: { name: "Drachenplatte", icon: "🐉", type: "armor", rarity: "legendary", defense: 26, color: "#fff2a8", armorType: "schwer" },
   metin_shard: { name: "Metin-Splitter", icon: "✦", type: "material", rarity: "rare", color: "#9ee7ff" },
   pugna_core: { name: "Pugna-Kern", icon: "◉", type: "material", rarity: "epic", color: "#c084fc" },
   gem: { name: "Kristall", icon: "◆", type: "material", rarity: "rare", color: "#7dd3fc" },

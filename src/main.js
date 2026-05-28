@@ -5024,6 +5024,11 @@ function blowKiss() {
     isHeart: true,
     onHit(target) {
       if (!target) return;
+      // Bosse + Minibosse sind immun gegen Luftkuss-Verzauberung
+      if (target.bossDef || target.rank === "boss" || target.rank === "miniboss") {
+        floatText(target.x, target.y - 40, "immun", "#fbbf24");
+        return;
+      }
       const mLevel = mastery ? mastery("blowKiss") : 0;
       applyStatus(target, "confused", 4 + mLevel);
       target.confusedBy = authUser || "lyra";
@@ -5490,7 +5495,7 @@ function killMob(mob) {
   if (equippedSignature() === "heartbreaker" && (statusTime(mob, "charmed") > 0 || statusTime(mob, "confused") > 0)) {
     let best = null, bd = 300;
     for (const o of mobs) {
-      if (o === mob || o.bossDef) continue;
+      if (o === mob || o.bossDef || o.rank === "boss" || o.rank === "miniboss") continue;
       const d = Math.hypot(o.x - mob.x, o.y - mob.y);
       if (d < bd) { bd = d; best = o; }
     }
@@ -6726,15 +6731,24 @@ function update(dt) {
         const d2 = Math.hypot(other.x - mob.x, other.y - mob.y);
         if (d2 < bestD && d2 < 400) { bestD = d2; bestTarget = other; }
       }
+      mob.confHitCd = Math.max(0, (mob.confHitCd || 0) - dt);
       if (bestTarget) {
         const ang = Math.atan2(bestTarget.y - mob.y, bestTarget.x - mob.x);
         mob.x += Math.cos(ang) * mob.speed * dt;
         mob.y += Math.sin(ang) * mob.speed * dt;
-        if (bestD < mob.r + bestTarget.r + 8) {
-          const dmg = Math.max(2, Math.round(mob.damage * 0.6));
+        if (bestD < mob.r + bestTarget.r + 8 && mob.confHitCd <= 0) {
+          mob.confHitCd = 0.7; // kein Rapid-Fire
+          // Schaden gedeckelt: niedriger Multiplikator + max 25% der Ziel-maxHP (kein One-Shot)
+          let dmg = Math.max(2, Math.round(mob.damage * 0.35));
+          dmg = Math.min(dmg, Math.round((bestTarget.maxHp || 40) * 0.25));
           bestTarget.hp -= dmg;
           bestTarget.hitTimer = 0.08;
           floatText(bestTarget.x, bestTarget.y - 30, `-${dmg}`, "#f472b6");
+          // Ziel wehrt sich: verzauberter Mob bekommt auch Schaden zurueck
+          const retal = Math.max(1, Math.round((bestTarget.damage || 8) * 0.4));
+          mob.hp -= retal;
+          mob.hitTimer = 0.08;
+          floatText(mob.x, mob.y - 30, `-${retal}`, "#fca5a5");
           // Kill-Credit dem Lyra-Spieler + tatsaechlich sterben lassen
           if (bestTarget.hp <= 0) {
             if (mob.confusedBy) {
@@ -6743,6 +6757,13 @@ function update(dt) {
             }
             if (multiplayerReady && isHost) hostKillMob(bestTarget);
             else if (!multiplayerReady) killMob(bestTarget);
+          }
+          // Verzauberter Mob selbst kann durch Gegenwehr sterben
+          if (mob.hp <= 0) {
+            if (mob.confusedBy) { mob.dmgBy = mob.dmgBy || {}; mob.dmgBy[mob.confusedBy] = (mob.dmgBy[mob.confusedBy] || 0) + retal; }
+            if (multiplayerReady && isHost) hostKillMob(mob);
+            else if (!multiplayerReady) killMob(mob);
+            continue;
           }
           mob.attackTelegraph = 0.18;
         }
