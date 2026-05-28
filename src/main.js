@@ -3547,10 +3547,19 @@ function renderGamble() {
   if (valEl) valEl.textContent = val;
   // Chance-Balken (Jackpot-Chance) + beste Stufe
   const jackpot = Math.min(0.5, val / 320);
+  const c = gambleChances(val);
   const fill = document.getElementById("gambleChanceFill");
-  if (fill) fill.style.width = `${Math.min(100, Math.round((val / 150) * 100))}%`;
+  // Balken = Chance auf mind. Episch (oder besser)
+  if (fill) fill.style.width = `${Math.round((c.epic + c.legendary + c.ultra))}%`;
   const tierEl = document.getElementById("gambleTier");
-  if (tierEl) tierEl.textContent = val >= 350 ? "💎 ULTRA-RARE möglich" : val >= 120 ? "★ Legendär möglich" : val >= 40 ? "✦ Episch" : val >= 12 ? "◆ Selten" : "— zu wenig";
+  if (tierEl) {
+    const parts = [];
+    if (c.ultra > 0) parts.push(`💎 Ultra ${c.ultra}%`);
+    if (c.legendary > 0) parts.push(`★ Legendär ${c.legendary}%`);
+    if (c.epic > 0) parts.push(`✦ Episch ${c.epic}%`);
+    if (c.rare > 0) parts.push(`◆ Selten ${c.rare}%`);
+    tierEl.innerHTML = parts.length ? parts.join(" · ") : "— zu wenig Einsatz";
+  }
   const rollBtn = document.getElementById("gambleRoll");
   if (rollBtn) rollBtn.disabled = gamblePot.size === 0;
   // Pot
@@ -3593,12 +3602,35 @@ let gambleSpinning = false;
 
 // Tier-Bestimmung mit Caps: niedriger Wert kann hoechstens "epic", erst hoher
 // Wert schaltet legendary/ultra frei. (Balance nach Wunsch)
+// Einzel-Wahrscheinlichkeiten je Stufe (vor der sequentiellen Verkettung)
+function tierProbs(val) {
+  return {
+    ultra: val >= 350 ? Math.min(0.12, 0.04 + (val - 350) / 3000) : 0,
+    legendary: val >= 120 ? Math.min(0.38, val / 480) : 0,
+    epic: val >= 40 ? Math.min(0.62, val / 120) : 0,
+    rare: val >= 12 ? 0.82 : 0,
+  };
+}
+
 function rollGambleTier(val) {
-  if (val >= 350 && Math.random() < Math.min(0.12, 0.04 + (val - 350) / 3000)) return "ultra";
-  if (val >= 120 && Math.random() < Math.min(0.38, val / 480)) return "legendary";
-  if (val >= 40 && Math.random() < Math.min(0.62, val / 120)) return "epic";
-  if (val >= 12 && Math.random() < 0.82) return "rare";
+  const p = tierProbs(val);
+  if (p.ultra && Math.random() < p.ultra) return "ultra";
+  if (p.legendary && Math.random() < p.legendary) return "legendary";
+  if (p.epic && Math.random() < p.epic) return "epic";
+  if (p.rare && Math.random() < p.rare) return "rare";
   return "trash";
+}
+
+// Tatsaechliche End-Chancen (in %) unter Beruecksichtigung der Verkettung
+function gambleChances(val) {
+  const p = tierProbs(val);
+  let rem = 1;
+  const ultra = rem * p.ultra; rem -= ultra;
+  const legendary = rem * p.legendary; rem -= legendary;
+  const epic = rem * p.epic; rem -= epic;
+  const rare = rem * p.rare; rem -= rare;
+  const pct = (x) => Math.round(x * 100);
+  return { ultra: pct(ultra), legendary: pct(legendary), epic: pct(epic), rare: pct(rare), trash: pct(rem) };
 }
 
 function rollGamble() {

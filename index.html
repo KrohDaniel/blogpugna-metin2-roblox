@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=gamble-tension" />
+    <link rel="stylesheet" href="styles.css?v=gamble-chances" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -542,7 +542,7 @@
             <div class="gamble-meter">
               <div class="gamble-meter-row"><span>Glücks-Wert</span><strong id="gambleValue">0</strong></div>
               <div class="bar"><span id="gambleChanceFill"></span></div>
-              <div class="gamble-meter-row"><span>Beste mögliche Stufe</span><strong id="gambleTier">—</strong></div>
+              <div class="gamble-meter-row gamble-chances"><span>Chancen</span><strong id="gambleTier">—</strong></div>
             </div>
             <div class="gamble-actions">
               <button id="gambleRoll" type="button" class="primary" disabled>🎲 Drehen!</button>
@@ -562,7 +562,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=gamble-tension"></script>
-    <script type="module" src="src/main.js?v=gamble-tension"></script>
+    <script type="module" src="firebase-config.js?v=gamble-chances"></script>
+    <script type="module" src="src/main.js?v=gamble-chances"></script>
   </body>
 </html>
