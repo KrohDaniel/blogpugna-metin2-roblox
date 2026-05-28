@@ -622,6 +622,10 @@ function applyCritAndLifesteal(amount) {
     crit = true;
     sfx.crit();
     hitStopTimer = Math.max(hitStopTimer, 0.08);
+    // Schatten – Blutdurst: Krits heilen zusätzlich 8% des Schadens
+    if (player.classId === "shadow") {
+      player.hp = Math.min(player.maxHp, player.hp + Math.max(1, Math.round(dmg * 0.08)));
+    }
   } else {
     dmg = Math.round(dmg);
     sfx.hit();
@@ -4546,7 +4550,8 @@ function swing() {
     return;
   }
 
-  const reach = weapon.reach || 82;
+  // Bär-Form ist Nahkampf: feste Krallen-Reichweite statt Stab-Projektil-Reichweite (sonst trifft der Schlag den halben Screen)
+  const reach = (player.bearForm > 0) ? 120 : (weapon.reach || 82);
   const arcX = player.x + Math.cos(angle) * reach;
   const arcY = player.y + Math.sin(angle) * reach;
   let hit = false;
@@ -6509,6 +6514,21 @@ function handleBossDefeat(mob, loot = true) {
   if (mob.bossDef.defeatToast) showToast(mob.bossDef.defeatToast);
 }
 
+// Kill-Heilung (allgemein) + klassenspezifische Bonus-Heilung (Magier/Lyra)
+function healFromKill(mob) {
+  if (!mob || player.hp <= 0 || player.hp >= player.maxHp) return;
+  let pct = mob.elite ? 0.04 : 0.02;
+  if (mob.rank === "miniboss") pct = 0.07;
+  if (mob.rank === "boss" || mob.bossDef) pct = 0.15;
+  // Magier – Arkane Ernte: Distanz-Kill (>250px) heilt extra 3%
+  if (player.classId === "runemage" && dist(player, mob) > 250) pct += 0.03;
+  // Lyra – Herzblut: verzauberter Gegner stirbt → +5%
+  if (player.classId === "charmer" && (statusTime(mob, "charmed") > 0 || statusTime(mob, "confused") > 0)) pct += 0.05;
+  const heal = Math.max(1, Math.round(player.maxHp * pct));
+  player.hp = Math.min(player.maxHp, player.hp + heal);
+  floatText(player.x, player.y - 60, `+${heal}`, "#86efac");
+}
+
 function killMob(mob) {
   if (!mob || mob._dead) return;
   mob._dead = true;
@@ -6547,6 +6567,7 @@ function killMob(mob) {
   player.mobsKilled += 1;
   trackCourierKill();
   gainXp(mob.xp);
+  healFromKill(mob);
   if (mob.bossDef) {
     handleBossDefeat(mob, true);
   } else {
@@ -7834,6 +7855,11 @@ function update(dt) {
     return;
   }
 
+  // Combat-State: HP-Abfall pro Frame erkennen → Out-of-Combat-Regen-Timer (deckt alle Schadensquellen ab)
+  if (typeof player._lastHp === "number" && player.hp < player._lastHp - 0.5) player.combatTimer = 4;
+  player._lastHp = player.hp;
+  player.combatTimer = Math.max(0, (player.combatTimer || 0) - dt);
+
   const match = activePvpMatch();
   if (match && Date.now() >= match.endsAt && isHost) {
     finishPvp(match.mode === "race" ? null : "Unentschieden");
@@ -7888,11 +7914,13 @@ function update(dt) {
       waveTimer = 2.4 + Math.random() * 2.8;
     }
     if (minibossTimer <= 0) {
-      spawnSpecialMob("miniboss");
+      // Max 2 Minibosse gleichzeitig
+      if (mobs.filter((m) => m.rank === "miniboss").length < 2) spawnSpecialMob("miniboss");
       minibossTimer = 22 + Math.random() * 18;
     }
     if (bossTimer <= 0) {
-      spawnSpecialMob("boss");
+      // Nur ein Boss pro Map gleichzeitig — kein Stapeln mehrerer Bosse
+      if (!mobs.some((m) => m.rank === "boss")) spawnSpecialMob("boss");
       bossTimer = 55 + Math.random() * 30;
     }
   }
@@ -7902,6 +7930,22 @@ function update(dt) {
   if (inSafeZone(player.x, player.y) && player.hp < player.maxHp && player.hp > 0) {
     const regen = 6; // HP pro Sekunde
     player.hp = Math.min(player.maxHp, player.hp + regen * dt);
+  }
+  // === Sustain ===
+  const canHeal = player.hp < player.maxHp && player.hp > 0 && !inSafeZone(player.x, player.y);
+  // Allgemein: Out-of-Combat-Regen — 4s ohne Schaden → 4%/s
+  if (canHeal && (player.combatTimer || 0) <= 0) {
+    player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.04 * dt);
+  }
+  // Krieger – Standhaft: +1%/s maxHP pro nahem Gegner (max 5), auch im Kampf
+  if (canHeal && player.classId === "warrior") {
+    const near = Math.min(5, mobs.filter((m) => dist(player, m) < 150).length);
+    if (near > 0) player.hp = Math.min(player.maxHp, player.hp + player.maxHp * 0.01 * near * dt);
+  }
+  // Druidin – Naturverbunden+: Regen in allen Welten, +50% nahe verwurzelter Gegner
+  if (canHeal && player.classId === "druid") {
+    const rootedNear = mobs.some((m) => dist(player, m) < 220 && statusTime(m, "stunned") > 0);
+    player.hp = Math.min(player.maxHp, player.hp + 3 * (rootedNear ? 1.5 : 1) * dt);
   }
   for (const mob of mobs) {
     mob.hitTimer = Math.max(0, mob.hitTimer - dt);
@@ -8149,10 +8193,6 @@ function update(dt) {
       showToast("Bär-Form vorbei.");
     }
   }
-  // Druid-Passive: Natur-Regen in Wiesen + Sumpf
-  if (player.classId === "druid" && (currentWorldId === "meadows" || currentWorldId === "shadowfen") && player.hp < player.maxHp && player.hp > 0) {
-    player.hp = Math.min(player.maxHp, player.hp + 2 * dt);
-  }
   // Combo-Decay
   if (comboTimer > 0) {
     comboTimer -= dt;
@@ -8185,9 +8225,9 @@ function update(dt) {
 
 function spawnMobWave() {
   const playerCount = 1 + Object.keys(remotePlayers || {}).length;
-  const maxMobs = 56 + Math.min(player.level * 2, 20) + playerCount * 8;
+  const maxMobs = 16 + Math.min(player.level, 8) + playerCount * 5;
   if (mobs.length >= maxMobs) return;
-  const amount = 3 + Math.floor(Math.random() * 4) + Math.floor(playerCount * 0.5);
+  const amount = 2 + Math.floor(Math.random() * 3) + Math.floor(playerCount * 0.5);
   for (let i = 0; i < amount && mobs.length < maxMobs; i += 1) {
     const point = randomPointAwayFromPlayer(620);
     const roll = Math.random();
