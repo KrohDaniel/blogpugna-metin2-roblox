@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=weltboss-1" />
+    <link rel="stylesheet" href="styles.css?v=drops-menu-1" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -174,7 +174,8 @@
           <button type="button" id="touchSwitchChar">🔄 Charakter wechseln</button>
         </div>
 
-        <div class="hud-toggles" aria-label="Panels oeffnen">
+        <button id="hudMenuToggle" type="button" class="hud-menu-toggle" aria-label="Menue">☰ Menü</button>
+        <div class="hud-toggles collapsed" id="hudToggles" aria-label="Panels oeffnen">
           <button id="toggleInv" type="button" data-overlay="invOverlay"><kbd>I</kbd><span>Inventar</span></button>
           <button id="toggleChar" type="button" data-overlay="invOverlay"><kbd>C</kbd><span>Charakter</span></button>
           <button id="toggleQuest" type="button" data-overlay="questOverlay"><kbd>M</kbd><span>Quest</span></button>
@@ -475,7 +476,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=weltboss-1"></script>
-    <script type="module" src="src/main.js?v=weltboss-1"></script>
+    <script type="module" src="firebase-config.js?v=drops-menu-1"></script>
+    <script type="module" src="src/main.js?v=drops-menu-1"></script>
   </body>
 </html>

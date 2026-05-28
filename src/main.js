@@ -1470,7 +1470,21 @@ document.querySelectorAll(".hud-toggles button[data-overlay]").forEach((btn) => 
   btn.addEventListener("click", () => {
     toggleOverlay(btn.dataset.overlay);
     if (btn.dataset.overlay === "codexOverlay") renderCodex();
+    document.getElementById("hudToggles")?.classList.add("collapsed"); // nach Auswahl zuklappen
   });
+});
+
+// Desktop-Menu-Toggle (☰ Menü) — klappt die hud-toggles auf/zu
+const hudMenuToggle = document.getElementById("hudMenuToggle");
+const hudTogglesEl = document.getElementById("hudToggles");
+hudMenuToggle?.addEventListener("click", (e) => {
+  e.stopPropagation();
+  hudTogglesEl?.classList.toggle("collapsed");
+});
+document.addEventListener("click", (e) => {
+  if (!hudTogglesEl || hudTogglesEl.classList.contains("collapsed")) return;
+  if (e.target.closest("#hudToggles") || e.target.closest("#hudMenuToggle")) return;
+  hudTogglesEl.classList.add("collapsed");
 });
 document.querySelectorAll(".overlay-close").forEach((btn) => {
   btn.addEventListener("click", closeAllOverlays);

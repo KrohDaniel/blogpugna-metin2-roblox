@@ -187,11 +187,64 @@ export function getDropTable(worldId, rank) {
   return w[rank] || w.mob;
 }
 
+// Klassen-Waffen-Pools nach Raritaet (alle Klassen, damit jede Klasse ihre Leiter findet).
+const weaponPoolByTier = {
+  common:   ["rust_sword", "twin_daggers", "apprentice_staff", "sprout_staff", "dancer_pole"],
+  rare:     ["iron_blade", "fang_daggers", "crystal_staff", "oak_staff", "silk_pole"],
+  epic:     ["pugna_cleaver", "venom_kris", "rune_staff", "thorn_staff", "rose_pole", "storm_saber"],
+  legendary:["fullmoon_sickle", "nightfang", "storm_scepter", "worldtree_staff", "heartbreaker"],
+};
+// Signatur-Waffen (sehr selten, nur Boss/Miniboss hoeherer Welten)
+const signaturePool = ["earthsplitter", "shadowbite", "tempest_rod", "worldtree_staff", "heartbreaker"];
+
+const worldOrder = ["meadows", "frostwastes", "emberforge", "shadowfen", "tideklippen", "skyspire"];
+
+// Welche Raritaeten kann eine Welt bei welchem Rank droppen + wie oft.
+function weaponRollFor(worldId, rank) {
+  const wi = Math.max(0, worldOrder.indexOf(worldId));
+  // Tier-Gewichte je nach Welt-Fortschritt
+  let tiers;
+  if (wi === 0) tiers = { common: 0.7, rare: 0.3 };
+  else if (wi === 1) tiers = { common: 0.4, rare: 0.5, epic: 0.1 };
+  else if (wi === 2) tiers = { rare: 0.5, epic: 0.45, legendary: 0.05 };
+  else if (wi === 3) tiers = { rare: 0.3, epic: 0.55, legendary: 0.15 };
+  else tiers = { epic: 0.5, legendary: 0.5 };
+  // Wie wahrscheinlich ueberhaupt eine Klassen-Waffe faellt
+  let chance = 0;
+  if (rank === "boss") chance = 0.9;
+  else if (rank === "miniboss") chance = 0.6;
+  else if (rank === "metin") chance = 0.30;
+  else if (rank === "elite") chance = 0.18;
+  else chance = 0.06; // normale Mobs
+  return { tiers, chance, wi };
+}
+
+function pickWeightedTier(tiers) {
+  const roll = Math.random();
+  let acc = 0;
+  for (const [t, w] of Object.entries(tiers)) { acc += w; if (roll <= acc) return t; }
+  return Object.keys(tiers)[0];
+}
+
 export function rollDrops(worldId, rank) {
   const table = getDropTable(worldId, rank);
   const drops = [];
   for (const entry of table.rolls || []) {
     if (Math.random() < entry.chance) drops.push(entry.id);
+  }
+  // Klassen-Waffe aus dem Pool (zusaetzlich zu Tabellen-Drops)
+  const wr = weaponRollFor(worldId, rank);
+  if (Math.random() < wr.chance) {
+    const tier = pickWeightedTier(wr.tiers);
+    const pool = weaponPoolByTier[tier] || weaponPoolByTier.common;
+    drops.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  // Signatur-Waffe: sehr selten, nur Boss/Miniboss ab Welt 2
+  if ((rank === "boss" || rank === "miniboss") && wr.wi >= 2) {
+    const sigChance = rank === "boss" ? 0.08 : 0.03;
+    if (Math.random() < sigChance) {
+      drops.push(signaturePool[Math.floor(Math.random() * signaturePool.length)]);
+    }
   }
   const gold = table.goldRange ? Math.floor(table.goldRange[0] + Math.random() * (table.goldRange[1] - table.goldRange[0] + 1)) : 0;
   return { drops, gold };
