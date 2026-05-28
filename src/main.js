@@ -2994,10 +2994,16 @@ async function syncPresence(force = false) {
 }
 
 // Lokale Aktion fuer andere Spieler broadcasten (kompakte Zeichenkette)
+let lastActionBroadcast = 0;
 function broadcastAction(kind, abilityId) {
   const ang = (typeof aimAngle === "function") ? aimAngle() : 0;
   player._lastAction = `${kind}|${abilityId || ""}|${ang.toFixed(2)}|${Date.now()}`;
-  syncPresence(true); // sofort senden statt auf naechsten Tick warten
+  // Skills sofort senden; schnelle Auto-Attacks throttlen (max alle 140ms forcen)
+  const now = performance.now();
+  if (kind === "skill" || now - lastActionBroadcast > 140) {
+    lastActionBroadcast = now;
+    syncPresence(true);
+  }
 }
 
 // === SHARED WORLD ===
@@ -3253,7 +3259,8 @@ function hostKillMob(mob) {
   }
   const owner = topDamager(mob.dmgBy);
   dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"), owner);
-  pushGrant(owner || authUser, { xp: mob.xp, kill: "mob" });
+  const xpReward = mob.xp || (mob.rank === "boss" ? 400 : mob.rank === "miniboss" ? 120 : mob.elite ? 30 : 12);
+  pushGrant(owner || authUser, { xp: xpReward, kill: "mob" });
   burst(mob.x, mob.y, mob.color || "#ff6b6b", mob.rank === "boss" ? 70 : mob.rank === "miniboss" ? 42 : 24);
   // Boss: Pet-Unlock + Cinematic auch im Multiplayer (loot=false, dropLoot lief schon oben)
   if (mob.bossDef) {
@@ -6857,6 +6864,8 @@ function spawnMobWave() {
 }
 
 function updateParticles(dt) {
+  // Hard-Cap gegen Lag: bei Überlauf älteste Partikel verwerfen
+  if (particles.length > 600) particles.splice(0, particles.length - 600);
   for (let i = particles.length - 1; i >= 0; i -= 1) {
     const p = particles[i];
     p.x += p.vx * dt;

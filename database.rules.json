@@ -124,6 +124,7 @@
                 "to": { ".validate": "newData.isString() && newData.val().length <= 18" },
                 "gold": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
                 "xp": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
+                "kill": { ".validate": "newData.isString() && newData.val().length <= 16" },
                 "ts": { ".validate": "newData.isNumber()" },
                 "$other": { ".validate": false }
               }
