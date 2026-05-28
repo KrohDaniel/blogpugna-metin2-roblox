@@ -4524,7 +4524,8 @@ function swarmCall() {
       vx: 0, vy: 0,
       life: 4,
       target: null,
-      damage: Math.round(attackPower() * 0.18),
+      damage: Math.max(2, Math.round(attackPower() * 0.10)),
+      hitCd: 0,
     });
   }
   // Initialer Schwarm-Burst (Wolke vom Spieler)
@@ -4787,6 +4788,7 @@ function updateInsectSwarm(dt) {
   for (let i = insectSwarm.length - 1; i >= 0; i -= 1) {
     const ins = insectSwarm[i];
     ins.life -= dt;
+    ins.hitCd = Math.max(0, (ins.hitCd || 0) - dt);
     if (ins.life <= 0) { insectSwarm.splice(i, 1); continue; }
     // Ziel suchen
     if (!ins.target || ins.target.hp <= 0 || !mobs.includes(ins.target)) {
@@ -4803,9 +4805,12 @@ function updateInsectSwarm(dt) {
       const d = Math.hypot(dx, dy) || 1;
       ins.vx = (dx / d) * 280;
       ins.vy = (dy / d) * 280;
-      if (d < 14) {
-        damageMob(ins.target, ins.damage);
-        // Insekt geht zurück Richtung Spieler
+      // Treffer am Rand des Mobs, nur wenn Hit-Cooldown abgelaufen (gegen Rapid-Fire)
+      if (d < ins.target.r + 8 && ins.hitCd <= 0) {
+        // Gegen Bosse zusaetzlich gedrosselt — Schwarm war viel zu stark
+        const dmg = ins.target.bossDef ? Math.max(1, Math.round(ins.damage * 0.45)) : ins.damage;
+        damageMob(ins.target, dmg);
+        ins.hitCd = 0.6; // max ~1.6 Treffer/s pro Insekt
         ins.target = null;
         ins.life = Math.max(0.4, ins.life - 0.4);
       }
