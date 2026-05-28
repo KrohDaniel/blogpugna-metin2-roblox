@@ -107,10 +107,10 @@
             },
             "hits": {
               "$hitId": {
-                ".validate": "newData.hasChildren(['kind', 'amount']) && newData.child('kind').isString() && newData.child('amount').isNumber()",
-                "kind": { ".validate": "newData.isString() && newData.val().length <= 24" },
-                "serverId": { ".validate": "newData.isString() && newData.val().length <= 64" },
-                "amount": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
+                ".validate": "newData.hasChildren(['type', 'id', 'dmg']) && newData.child('type').isString() && newData.child('dmg').isNumber()",
+                "type": { ".validate": "newData.isString() && newData.val().length <= 16" },
+                "id": { ".validate": "newData.isString() && newData.val().length <= 64" },
+                "dmg": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100000" },
                 "by": { ".validate": "newData.isString() && newData.val().length <= 18" },
                 "ts": { ".validate": "newData.isNumber()" },
                 "$other": { ".validate": false }

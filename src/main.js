@@ -837,6 +837,9 @@ function triggerClassSpotlight(boss) {
 function updateWorldBoss(mob, dt) {
   if (!mob.bossDef) return;
   const def = mob.bossDef;
+  if (!def.abilities) return; // defensiv: Boss ohne Abilities (z.B. unvollstaendiger Snapshot)
+  // Bosse aus Firebase-Snapshot haben kein abilityCds-Objekt → crashte vorher
+  mob.abilityCds = mob.abilityCds || {};
   const pct = mob.hp / mob.maxHp;
   const newPhase = pct < 0.33 ? 3 : pct < 0.66 ? 2 : 1;
   if (newPhase !== mob.bossPhase) {
