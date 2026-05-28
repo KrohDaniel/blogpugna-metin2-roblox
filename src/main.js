@@ -236,6 +236,7 @@ let toastTimer = 0;
 let waveTimer = 3.5;
 let minibossTimer = 18;
 let bossTimer = 48;
+let raid = null; // Eisbrecher-Flucht Raid-Zustand (nur in Welt frost_raid)
 let authUser = null;
 let authColor = "#55d7ff";
 let multiplayerReady = false;
@@ -896,6 +897,152 @@ function spawnWorldBoss(bossDef) {
   skillFlashes.push({ color: bossDef.appearance.head || "#fff", life: 0.4, maxLife: 0.4 });
 }
 
+// ===== EISBRECHER-FLUCHT (Raid) =====
+const RAID_SEGMENTS = [1500, 3000, 4500]; // x-Positionen der Eis-Blockaden
+const RAID_BOSS_X = 6000;
+const RAID_LAWINE_SPEED = 62; // px/s — Grundtempo der Lawine
+
+function startRaid() {
+  raid = {
+    lawineX: -400,
+    segs: RAID_SEGMENTS.map((x) => ({ x, spawned: false, cleared: false })),
+    bossSpawned: false,
+    done: false,
+    dmgTimer: 0,
+    pauseGlow: 0,
+  };
+  player.x = 240; player.y = world.h / 2;
+  player.invuln = 3;
+  showToast("❄ EISBRECHER-FLUCHT! Renne nach rechts — räum die Blockaden, die Lawine kommt!");
+  sfx.bossIntro?.();
+}
+
+function raidActiveBlockade() {
+  return raid ? raid.segs.find((s) => !s.cleared) : null;
+}
+
+function spawnRaidMobs(seg) {
+  if (multiplayerReady && !isHost) return; // im MP nur der Host spawnt
+  const n = 3 + Math.floor(Math.random() * 2);
+  for (let i = 0; i < n; i += 1) {
+    spawnMob(seg.x + 50 + Math.random() * 200, world.h / 2 + (Math.random() - 0.5) * 360, i === 0 ? "elite" : "mob");
+    const m = mobs[mobs.length - 1];
+    if (m) m.raidSeg = seg.x;
+  }
+}
+
+function spawnRaidBoss() {
+  if (multiplayerReady && !isHost) return;
+  const bossDef = bossForWorld("frostwastes");
+  if (!bossDef) return;
+  spawnWorldBoss(bossDef);
+  const boss = mobs[mobs.length - 1];
+  if (boss) {
+    boss.isRaidBoss = true;
+    boss.x = RAID_BOSS_X + 250;
+    boss.y = world.h / 2;
+  }
+}
+
+function completeRaid() {
+  // Belohnung: Gold, Relikt + garantierte legendäre Rüstung passend zur Klasse
+  player.gold += 600;
+  addInventory("ancient_relic", 2);
+  const armorByClass = { warrior: "dragon_plate", shadow: "shadow_leather", runemage: "silk_garb", druid: "shadow_leather", charmer: "silk_garb" };
+  addInventory(armorByClass[player.classId] || "dragon_plate", 1);
+  showToast("🏆 RAID GESCHAFFT! 600 Gold + 2 Relikte + legendäre Belohnung!");
+  cameraShake = 0.8;
+  skillFlashes.push({ color: "#fde047", life: 0.8, maxLife: 0.8 });
+  sfx.gambleJackpot?.();
+  saveCurrentCharacter();
+  // Zurück in die Frost-Öden nach kurzer Pause
+  setTimeout(() => { if (currentWorldId === "frost_raid") travelToWorld("frostwastes", "east"); }, 4000);
+}
+
+function updateRaid(dt) {
+  if (!raid || currentWorldId !== "frost_raid" || player.hp <= 0) return;
+  const bl = raidActiveBlockade();
+  if (bl) {
+    // Mobs spawnen wenn der Spieler sich naehert
+    if (!bl.spawned && player.x > bl.x - 640) {
+      spawnRaidMobs(bl);
+      bl.spawned = true;
+      showToast("🧊 Eis-Blockade! Räum die Wächter weg, um durchzukommen.");
+    }
+    // Eis-Wand: blockiert bis geraeumt
+    if (bl.spawned && player.x > bl.x - 46) player.x = bl.x - 46;
+    // Geraeumt?
+    if (bl.spawned && !mobs.some((m) => m.raidSeg === bl.x && m.hp > 0)) {
+      bl.cleared = true;
+      raid.pauseGlow = 2.5;
+      raid.lawineX = Math.min(raid.lawineX, bl.x - 1100); // Atempause: Lawine zurueckgeworfen
+      showToast("✓ Blockade zerstört! Weiter, schnell!");
+      sfx.smithSuccess?.();
+    }
+  }
+  // Boss-Phase
+  if (!bl && !raid.bossSpawned && player.x > RAID_BOSS_X - 650) {
+    spawnRaidBoss();
+    raid.bossSpawned = true;
+    showToast("❄ Der FROST-WYRM versperrt den Ausgang!");
+  }
+  // Lawine vorruecken — stoppt am Arena-Eingang sobald der Boss da ist
+  const lawineTarget = raid.bossSpawned ? RAID_BOSS_X - 750 : world.w;
+  if (raid.lawineX < lawineTarget) raid.lawineX += RAID_LAWINE_SPEED * dt;
+  raid.pauseGlow = Math.max(0, raid.pauseGlow - dt);
+  // Schaden, wenn von der Lawine erfasst (nicht tödlich auf einen Schlag)
+  raid.dmgTimer -= dt;
+  if (player.x < raid.lawineX + 22 && player.invuln <= 0 && raid.dmgTimer <= 0) {
+    player.hp -= Math.max(6, Math.round(player.maxHp * 0.07));
+    player.x = raid.lawineX + 64;
+    raid.dmgTimer = 0.45;
+    cameraShake = 0.4;
+    floatText(player.x, player.y - 44, "LAWINE!", "#bae6fd");
+    sfx.hit?.();
+  }
+  // Sieg
+  if (raid.bossSpawned && !raid.done && !mobs.some((m) => m.isRaidBoss && m.hp > 0)) {
+    raid.done = true;
+    completeRaid();
+  }
+}
+
+function drawRaid(cam) {
+  if (!raid || currentWorldId !== "frost_raid") return;
+  const t = performance.now() / 1000;
+  // Lawinen-Wand links
+  const lx = raid.lawineX;
+  const g = ctx.createLinearGradient(lx - 400, 0, lx + 30, 0);
+  g.addColorStop(0, "rgba(220,240,255,0.95)");
+  g.addColorStop(0.7, "rgba(160,200,235,0.85)");
+  g.addColorStop(1, "rgba(120,170,210,0.25)");
+  ctx.fillStyle = g;
+  ctx.fillRect(lx - 800, -200, 830, world.h + 400);
+  // wirbelnde Schnee-Brocken an der Front
+  ctx.fillStyle = "rgba(255,255,255,0.5)";
+  for (let i = 0; i < 14; i += 1) {
+    const yy = ((i * 97 + t * 120) % (world.h + 80)) - 40;
+    const xx = lx - 20 - (i % 4) * 26 + Math.sin(t * 3 + i) * 10;
+    ctx.fillRect(xx, yy, 10 + (i % 3) * 6, 10 + (i % 3) * 6);
+  }
+  // "LAWINE →" Warnpfeil an der Front
+  ctx.fillStyle = "#0b2a3a"; ctx.font = "bold 28px sans-serif"; ctx.textAlign = "left";
+  ctx.fillText("LAWINE →", lx - 150, cam.y + 50);
+  // Eis-Blockaden (ungeraeumte, gespawnte)
+  for (const s of raid.segs) {
+    if (s.cleared || !s.spawned) continue;
+    ctx.fillStyle = "rgba(190,230,255,0.85)";
+    ctx.fillRect(s.x - 10, -100, 20, world.h + 200);
+    ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 2;
+    ctx.strokeRect(s.x - 10, -100, 20, world.h + 200);
+    ctx.fillStyle = "#dff3ff"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
+    ctx.fillText("🧊 Wächter besiegen", s.x, cam.y + 30);
+  }
+  // Ziel-Markierung
+  ctx.fillStyle = "rgba(253,224,71,0.5)";
+  ctx.fillRect(RAID_BOSS_X - 4, -100, 8, world.h + 200);
+}
+
 function triggerClassSpotlight(boss) {
   const cls = player.classId;
   player.spotlightBuff = 4;
@@ -1449,6 +1596,8 @@ function travelToWorld(targetId, edge) {
   projectiles.length = 0;
   lavaPools.length = 0;
   seedWorld();
+  // Raid-Welt startet die Eisbrecher-Flucht; sonst Raid-Zustand zuruecksetzen
+  if (def.raid) startRaid(); else raid = null;
   portalCooldown = 2.2;
   showToast(`Du betrittst: ${def.name}`);
   sfx.portal();
@@ -7883,6 +8032,7 @@ function update(dt) {
   if (player.invisTimer > 0) player.invisTimer -= dt;
   if (cameraShake > 0) cameraShake = Math.max(0, cameraShake - dt * 2.5);
   if (portalCooldown > 0) portalCooldown = Math.max(0, portalCooldown - dt);
+  updateRaid(dt);
   checkPortalTransition();
   updateQuest();
   uiThrottle += dt;
@@ -8596,6 +8746,7 @@ function draw() {
   drawWeather();
   drawArenaPlatform();
   drawPortals();
+  drawRaid(cam);
   if (currentWorldId === "meadows") {
     drawSafeZone();
     drawBlacksmith();
@@ -10527,7 +10678,9 @@ function restart() {
   const worldChanged = currentWorldId !== "meadows";
   if (worldChanged) {
     currentWorldId = "meadows";
+    applyWorldSize(); // Weltgroesse + Schmied-Position auf Wiesen zuruecksetzen
   }
+  raid = null; // Raid-Tod beendet die Eisbrecher-Flucht
   player.x = blacksmith.x;
   player.y = blacksmith.y + 120;
   player.hp = player.maxHp;

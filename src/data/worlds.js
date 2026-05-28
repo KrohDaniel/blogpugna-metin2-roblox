@@ -30,7 +30,7 @@ export const worldDefs = {
     ground: "#1f3a4a",
     groundAccent: "rgba(180,210,240,0.08)",
     fog: "rgba(140,180,210,0.18)",
-    portals: { south: { to: "meadows", label: "Pugna-Wiesen" } },
+    portals: { south: { to: "meadows", label: "Pugna-Wiesen" }, east: { to: "frost_raid", label: "Eisbrecher-Raid (Lv18+)" } },
     mobPalette: { mob: "#7dd3fc", elite: "#9ee7ff", boss: "#bae6fd" },
     mobModifiers: { speedMult: 0.75, damageMult: 1.4, hpMult: 1.2, status: "frozen-aura" },
     flavor: "Frost-Mobs hinterlassen kurze Frost-Pfützen die dich verlangsamen.",
@@ -103,6 +103,25 @@ worldDefs.arena = {
   noWildMobs: true,
   arena: true,
   flavor: "Geschlossene Plattform fuer 1v1-Duelle und Metin-Rennen gegen Bots.",
+};
+
+// Eisbrecher-Raid: langer Korridor, Flucht vor der Lawine. Kein wildes Spawnen — die
+// Raid-Logik steuert Blockaden + Boss. Rueckweg ueber West-Portal (Abbruch).
+worldDefs.frost_raid = {
+  id: "frost_raid",
+  name: "Eisbrecher-Tunnel",
+  subtitle: "RAID: Flucht vor der Lawine — räum die Blockaden, erreiche den Frost-Wyrm",
+  levelRange: [18, 22],
+  size: { w: 6400, h: 1000 },
+  ground: "#16384a",
+  groundAccent: "rgba(180,210,240,0.12)",
+  fog: "rgba(150,190,220,0.20)",
+  portals: { west: { to: "frostwastes", label: "Zurück (Abbruch)" } },
+  mobPalette: { mob: "#7dd3fc", elite: "#9ee7ff", boss: "#bae6fd" },
+  mobModifiers: { speedMult: 0.9, damageMult: 1.5, hpMult: 1.4, status: "frozen-aura" },
+  noWildMobs: true,
+  raid: true,
+  flavor: "Renne nach rechts. Eis-Blockaden zwingen dich zum Kampf — und die Lawine wartet nicht.",
 };
 
 export function getWorldDef(worldId) {
