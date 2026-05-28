@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=trade-sort" />
+    <link rel="stylesheet" href="styles.css?v=gambler" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -529,9 +529,36 @@
           <button id="tradeCancelBtn" type="button">Abbrechen</button>
         </div>
       </aside>
+
+      <aside id="gambleOverlay" class="overlay-panel overlay-xwide hidden" aria-label="Glücksspiel">
+        <header class="overlay-head">
+          <h2>🎰 Glücksspiel-Gunter</h2>
+          <button class="overlay-close" data-close="gambleOverlay" type="button" aria-label="Schliessen">×</button>
+        </header>
+        <div class="gamble-layout">
+          <section class="gamble-pot">
+            <h3>Einsatz (Trash rein)</h3>
+            <div id="gamblePot" class="gamble-pot-grid"></div>
+            <div class="gamble-meter">
+              <div class="gamble-meter-row"><span>Glücks-Wert</span><strong id="gambleValue">0</strong></div>
+              <div class="bar"><span id="gambleChanceFill"></span></div>
+              <div class="gamble-meter-row"><span>Beste mögliche Stufe</span><strong id="gambleTier">—</strong></div>
+            </div>
+            <div class="gamble-actions">
+              <button id="gambleRoll" type="button" class="primary" disabled>🎲 Drehen!</button>
+              <button id="gambleClear" type="button">Leeren</button>
+            </div>
+            <div id="gambleResult" class="gamble-result hidden"></div>
+          </section>
+          <section class="gamble-inv">
+            <h3>Dein Inventar — klick zum Einsetzen</h3>
+            <div class="inv-scroll"><div id="gambleInventory" class="inventory"></div></div>
+          </section>
+        </div>
+      </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=trade-sort"></script>
-    <script type="module" src="src/main.js?v=trade-sort"></script>
+    <script type="module" src="firebase-config.js?v=gambler"></script>
+    <script type="module" src="src/main.js?v=gambler"></script>
   </body>
 </html>

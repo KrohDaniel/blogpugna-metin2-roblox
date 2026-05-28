@@ -41,6 +41,19 @@ export const npcs = [
     interactKey: "J",
     overlayId: "courierOverlay",
   },
+  {
+    id: "gambler",
+    name: "Glücksspiel-Gunter",
+    role: "Glücksspiel",
+    hint: "Wirf Trash rein — je mehr Wert, desto höher die Chance auf was Gutes!",
+    x: 1320, y: 700,
+    r: 36,
+    colors: { head: "#fde68a", body: "#7c3aed", arms: "#a855f7", legs: "#4c1d95" },
+    accent: "wizard-hat",
+    accentColor: "#fbbf24",
+    interactKey: "K",
+    overlayId: "gambleOverlay",
+  },
 ];
 
 export const shopItems = [

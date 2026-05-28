@@ -1463,7 +1463,7 @@ window.addEventListener("keydown", (event) => {
   if (key === "r") useAbility(ultimateAbilityId());
   if (key === "f") useBlacksmith();
   if (event.key === "1") usePotion();
-  if (key === "g" || key === "h" || key === "j") interactNpc(key);
+  if (key === "g" || key === "h" || key === "j" || key === "k") interactNpc(key);
   if (key === "i" || key === "c") toggleOverlay("invOverlay");
   if (key === "t") toggleOverlay("talentsOverlay");
   if (key === "b") { toggleOverlay("codexOverlay"); renderCodex(); }
@@ -2033,6 +2033,10 @@ document.getElementById("tradeReady")?.addEventListener("click", setTradeReady);
 document.getElementById("tradeCancel")?.addEventListener("click", cancelTrade);
 document.getElementById("tradeCancelBtn")?.addEventListener("click", cancelTrade);
 document.getElementById("tradeMyGold")?.addEventListener("change", () => { if (activeTrade) resetReadyAndSync(); });
+
+// Glücksspiel-Buttons
+document.getElementById("gambleRoll")?.addEventListener("click", rollGamble);
+document.getElementById("gambleClear")?.addEventListener("click", () => { gamblePot.clear(); renderGamble(); });
 
 document.querySelectorAll("[data-smith-mode]").forEach((btn) => {
   btn.addEventListener("click", () => applySmithMode(btn.dataset.smithMode));
@@ -3507,6 +3511,150 @@ function cancelTrade() {
     try { api.set(activeTrade.ref, null); } catch {}
   }
   closeTrade();
+}
+
+// ===== GLÜCKSSPIEL-GUNTER =====
+const gamblePot = new Set(); // Inventar-Indizes im Einsatz
+
+// Glücks-Wert eines Items (mehr Wert = bessere Chancen)
+function itemGambleValue(entry) {
+  const def = itemDefs[entry.id];
+  if (!def) return 0;
+  const rarW = { common: 4, rare: 14, epic: 40, legendary: 100 }[def.rarity] || 4;
+  let v = rarW * (entry.count || 1);
+  if (entry.upgrade) v += entry.upgrade * 6;
+  if (def.type === "rune") { const r = parseRune(entry.id); if (r) v += runeValue(r.type, r.tier) * 3; }
+  return Math.round(v);
+}
+
+function gamblePotValue() {
+  let v = 0;
+  for (const idx of gamblePot) { const e = player.inventory[idx]; if (e) v += itemGambleValue(e); }
+  return v;
+}
+
+function openGamble() {
+  gamblePot.clear();
+  document.getElementById("gambleResult")?.classList.add("hidden");
+  renderGamble();
+}
+
+function renderGamble() {
+  const potEl = document.getElementById("gamblePot");
+  const invEl = document.getElementById("gambleInventory");
+  const val = gamblePotValue();
+  const valEl = document.getElementById("gambleValue");
+  if (valEl) valEl.textContent = val;
+  // Chance-Balken (Jackpot-Chance) + beste Stufe
+  const jackpot = Math.min(0.5, val / 320);
+  const fill = document.getElementById("gambleChanceFill");
+  if (fill) fill.style.width = `${Math.min(100, Math.round((val / 150) * 100))}%`;
+  const tierEl = document.getElementById("gambleTier");
+  if (tierEl) tierEl.textContent = val >= 120 ? "★ Legendär möglich" : val >= 50 ? "✦ Episch" : val >= 18 ? "◆ Selten" : "— zu wenig";
+  const rollBtn = document.getElementById("gambleRoll");
+  if (rollBtn) rollBtn.disabled = gamblePot.size === 0;
+  // Pot
+  if (potEl) {
+    potEl.innerHTML = "";
+    for (const idx of gamblePot) {
+      const e = player.inventory[idx];
+      if (!e) continue;
+      const def = itemDefs[e.id];
+      const d = document.createElement("div");
+      d.className = "trade-item";
+      d.style.color = def?.color || "#fff";
+      d.innerHTML = `${def?.icon || "?"}<span class="tcount">${e.count > 1 ? e.count : ""}</span>`;
+      d.title = `${itemLabel(e)} — Klick: zurueck`;
+      d.addEventListener("click", () => { gamblePot.delete(idx); renderGamble(); });
+      potEl.append(d);
+    }
+  }
+  // Inventar
+  if (invEl) {
+    invEl.innerHTML = "";
+    player.inventory.forEach((e, idx) => {
+      if (!e || gamblePot.has(idx)) return;
+      const def = itemDefs[e.id];
+      if (!def) return;
+      const slot = document.createElement("button");
+      slot.type = "button";
+      slot.className = `slot ${def.rarity || ""}`;
+      slot.style.setProperty("--item-color", def.color || "#fff");
+      slot.innerHTML = `<span class="icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span><span class="count">${e.count}</span>`;
+      slot.title = `${itemLabel(e)} (Wert ${itemGambleValue(e)}) — Klick: einsetzen`;
+      slot.addEventListener("click", () => { gamblePot.add(idx); renderGamble(); });
+      invEl.append(slot);
+    });
+  }
+}
+
+function rollGamble() {
+  if (gamblePot.size === 0) return;
+  const val = gamblePotValue();
+  // Einsatz verbrauchen (hohe Indizes zuerst)
+  const indices = [...gamblePot].sort((a, b) => b - a);
+  for (const idx of indices) {
+    if (player.weaponIndex === idx) player.weaponIndex = -1;
+    if (player.armorIndex === idx) player.armorIndex = -1;
+    player.inventory.splice(idx, 1);
+    if (player.weaponIndex > idx) player.weaponIndex -= 1;
+    if (player.armorIndex > idx) player.armorIndex -= 1;
+  }
+  gamblePot.clear();
+  // Roll: Jackpot/Win/Meh skaliert mit Wert
+  const jackpot = Math.min(0.5, val / 320);
+  const win = Math.min(0.8, val / 110);
+  const roll = Math.random();
+  let reward, cls;
+  if (roll < jackpot && val >= 120) { reward = gambleReward("legendary"); cls = "jackpot"; }
+  else if (roll < win && val >= 50) { reward = gambleReward("epic"); cls = "win"; }
+  else if (val >= 18) { reward = gambleReward("rare"); cls = "win"; }
+  else { reward = gambleReward("trash"); cls = "meh"; }
+  // Belohnung einbuchen
+  if (reward.gold) player.gold += reward.gold;
+  if (reward.itemId) addInventory(reward.itemId, reward.count || 1);
+  const resEl = document.getElementById("gambleResult");
+  if (resEl) {
+    resEl.className = `gamble-result ${cls}`;
+    resEl.innerHTML = reward.label;
+  }
+  sfx[cls === "jackpot" ? "ulti" : cls === "win" ? "levelUp" : "hit"]?.();
+  if (cls === "jackpot") { cameraShake = 0.4; skillFlashes.push({ color: "#ec4899", life: 0.5, maxLife: 0.5 }); }
+  saveCurrentCharacter();
+  renderGamble();
+  renderInventory();
+  updateUi();
+}
+
+function gambleReward(tier) {
+  const all = Object.entries(itemDefs);
+  const pickWeapon = (rarity) => {
+    const pool = all.filter(([, d]) => d.type === "weapon" && d.rarity === rarity);
+    return pool.length ? pool[Math.floor(Math.random() * pool.length)][0] : null;
+  };
+  const pickRune = (tierName) => {
+    const types = ["ruby", "sapphire", "emerald", "topaz", "amethyst", "diamond"];
+    return runeId(types[Math.floor(Math.random() * types.length)], tierName);
+  };
+  if (tier === "legendary") {
+    if (Math.random() < 0.5) { const id = pickWeapon("legendary"); if (id) return { itemId: id, label: `🎉 JACKPOT! Legendär: ${itemDefs[id].name}!` }; }
+    return { itemId: pickRune("perfekt"), label: "🎉 JACKPOT! Perfekte Rune!" };
+  }
+  if (tier === "epic") {
+    if (Math.random() < 0.5) { const id = pickWeapon("epic"); if (id) return { itemId: id, label: `✦ Episch: ${itemDefs[id].name}!` }; }
+    return { itemId: pickRune("strahlend"), label: "✦ Strahlende Rune!" };
+  }
+  if (tier === "rare") {
+    const r = Math.random();
+    if (r < 0.4) { const id = pickWeapon("rare"); if (id) return { itemId: id, label: `◆ Selten: ${itemDefs[id].name}` }; }
+    if (r < 0.7) return { itemId: pickRune("klar"), label: "◆ Klare Rune" };
+    return { itemId: "gem", count: 2, label: "◆ 2× Kristall" };
+  }
+  // trash → Trostpreis
+  const r = Math.random();
+  if (r < 0.4) return { gold: 30, label: "Naja… 30 Gold zurück." };
+  if (r < 0.7) return { itemId: "metin_shard", count: 1, label: "Ein Metin-Splitter. Besser als nichts." };
+  return { itemId: pickRune("rissig"), label: "Eine rissige Rune. Pech gehabt!" };
 }
 
 function applyQueuedHit(hit) {
@@ -8599,6 +8747,7 @@ function interactNpc(key) {
       if (npc.id === "trader") renderTrader();
       if (npc.id === "trainer") renderTrainer();
       if (npc.id === "courier") renderCourier();
+      if (npc.id === "gambler") openGamble();
       return true;
     }
   }
