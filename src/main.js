@@ -3418,7 +3418,7 @@ function renderTradeOverlay() {
     // Inventar nach Nuetzlichkeit fuer den Partner sortieren (nuetzlich oben, Muell unten)
     const entries = player.inventory
       .map((e, idx) => ({ e, idx }))
-      .filter(({ e, idx }) => e && !activeTrade.offerIdx.has(idx) && itemDefs[e.id])
+      .filter(({ e, idx }) => e && !activeTrade.offerIdx.has(idx) && itemDefs[e.id] && idx !== player.weaponIndex && idx !== player.armorIndex)
       .sort((a, b) => partnerUsefulness(b.e, partnerClass) - partnerUsefulness(a.e, partnerClass));
     for (const { e, idx } of entries) {
       const def = itemDefs[e.id];
@@ -3574,6 +3574,7 @@ function renderGamble() {
     invEl.innerHTML = "";
     player.inventory.forEach((e, idx) => {
       if (!e || gamblePot.has(idx)) return;
+      if (idx === player.weaponIndex || idx === player.armorIndex) return; // ausgeruestetes schuetzen
       const def = itemDefs[e.id];
       if (!def) return;
       const slot = document.createElement("button");
@@ -7987,8 +7988,19 @@ function renderInventoryInto(target) {
     }
     const powerBadge = (def.type === "weapon" || def.type === "armor")
       ? `<span class="power-badge" title="Wert-Score: ${power}">${power}</span>` : "";
+    // Klassen-Eignungs-Badge: ✓ wenn Waffe/Ruestung zur eigenen Klasse passt
+    let classBadge = "";
+    if (def.type === "weapon") {
+      const fit = weaponClassMatch(def, player.classId) === 1;
+      classBadge = `<span class="class-fit ${fit ? "yes" : "no"}" title="${fit ? "passt zu deiner Klasse" : "Fremd-Waffe (75% Schaden)"}">${fit ? "✓" : "✕"}</span>`;
+      if (fit) slot.classList.add("class-match");
+    } else if (def.type === "armor" && def.armorType) {
+      const fit = armorClassMatch(def, player.classId) >= 1;
+      classBadge = `<span class="class-fit ${fit ? "yes" : "no"}" title="${fit ? "ideal fuer deine Klasse" : "nicht ideal"}">${fit ? "✓" : "✕"}</span>`;
+      if (fit) slot.classList.add("class-match");
+    }
     const iconHtml = svgIconFor(invItem, iconColor) || `<span class="icon" style="color:${iconColor}">${def.icon}</span>`;
-    slot.innerHTML = `${badge}${affix}${powerBadge}${iconHtml}${upgrade}<span class="count">${invItem.count}</span>`;
+    slot.innerHTML = `${badge}${affix}${classBadge}${powerBadge}${iconHtml}${upgrade}<span class="count">${invItem.count}</span>`;
     target.append(slot);
   }
 }
