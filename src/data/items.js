@@ -49,6 +49,8 @@ export function armorClassMatch(armorDef, classId) {
 
 export const itemDefs = {
   health_potion: { name: "Roter Trank", icon: "🧪", type: "potion", rarity: "common", heal: 32, color: "#ff5d62" },
+  greater_potion: { name: "Großer Trank", icon: "🧪", type: "potion", rarity: "rare", heal: 75, color: "#f43f5e" },
+  super_potion: { name: "Elixier", icon: "⚗", type: "potion", rarity: "epic", heal: 160, color: "#e11d48" },
   // === KRIEGER · Schwert-Leiter ===
   rust_sword: { name: "Rostklinge", icon: "🗡", type: "weapon", rarity: "common", attack: 3, color: "#d9dee5", glow: "rgba(217,222,229,0.18)", reach: 82, cooldown: 0.42, style: "sword", weaponType: "sword" },
   iron_blade: { name: "Eisenklinge", icon: "🗡", type: "weapon", rarity: "rare", attack: 8, color: "#9ee7ff", glow: "rgba(85,215,255,0.28)", reach: 92, cooldown: 0.38, style: "sword", weaponType: "sword" },

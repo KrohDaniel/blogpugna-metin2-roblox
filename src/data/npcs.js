@@ -65,6 +65,8 @@ export const shopItems = [
 
 export const sellPrices = {
   health_potion: 6,
+  greater_potion: 16,
+  super_potion: 40,
   metin_shard: 12,
   gem: 24,
   pugna_core: 60,

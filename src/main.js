@@ -161,8 +161,8 @@ let pvpBotEntity = null;
 let pvpBotRespawnTimer = 0;
 let pvpBotAttackCd = 0;
 let smithSelectedIndex = null;
-let smithProtectIndex = null;   // Opfer-Item das die Bruch-Chance senkt
-let smithPickProtect = false;   // true = naechster Inventar-Klick waehlt das Schutz-Opfer
+let smithProtectIndices = [];   // Opfer-Items (gleiche Item-ID wie das Hauptitem) — senken die Bruch-Chance
+let smithPickProtect = false;   // true = naechster Inventar-Klick waehlt ein Schutz-Opfer
 let currentWorldId = "meadows";
 let portalCooldown = 0;
 let preArenaWorldId = "meadows";
@@ -1791,17 +1791,17 @@ ui.skillUltimate?.addEventListener("click", () => useAbility(ultimateAbilityId()
 ui.upgradeWeapon.addEventListener("click", () => smithUpgradeSelected());
 ui.smithReturn?.addEventListener("click", () => {
   smithSelectedIndex = null;
-  smithProtectIndex = null;
+  smithProtectIndices = [];
   smithPickProtect = false;
   renderSmithSlot();
 });
 document.querySelector("#smithProtectPick")?.addEventListener("click", () => {
   smithPickProtect = !smithPickProtect;
-  showToast(smithPickProtect ? "Klicke ein legendäres Item im Inventar als Schutz-Opfer." : "Auswahl abgebrochen.");
+  showToast(smithPickProtect ? "Klicke gleiche Items im Inventar als Schutz-Opfer (mehrere moeglich)." : "Auswahl beendet.");
   renderSmithSlot();
 });
 document.querySelector("#smithProtectClear")?.addEventListener("click", () => {
-  smithProtectIndex = null;
+  smithProtectIndices = [];
   smithPickProtect = false;
   renderSmithSlot();
 });
@@ -2499,14 +2499,16 @@ smithInventoryEl?.addEventListener("click", (event) => {
   const invItem = player.inventory[index];
   if (!invItem) return;
   const def = itemDefs[invItem.id];
-  // Schutz-Opfer waehlen (legendär, nicht das Item das aufgewertet wird)
+  // Schutz-Opfer waehlen: nur GLEICHE Item-ID wie das Hauptitem; mehrere moeglich (Toggle)
   if (smithPickProtect) {
+    const mainItem = smithSelectedIndex !== null ? player.inventory[smithSelectedIndex] : null;
+    if (!mainItem) { showToast("Erst ein Item zum Aufwerten waehlen."); return; }
     if (index === smithSelectedIndex) { showToast("Das aufzuwertende Item kann sich nicht selbst schuetzen."); return; }
-    if (def?.rarity !== "legendary") { showToast("Nur legendäre Items koennen als Schutz dienen."); return; }
+    if (invItem.id !== mainItem.id) { showToast("Nur die GLEICHE Waffe/Rüstung kann als Schutz dienen."); return; }
     if (index === player.weaponIndex || index === player.armorIndex || index === player.bootsIndex || index === player.hatIndex) { showToast("Ausgeruestete Items koennen nicht geopfert werden."); return; }
-    smithProtectIndex = index;
-    smithPickProtect = false;
-    showToast(`Schutz-Opfer gewaehlt: ${def.name} (−${Math.round(protectReduction(invItem) * 100)}% Risiko).`);
+    const at = smithProtectIndices.indexOf(index);
+    if (at >= 0) smithProtectIndices.splice(at, 1); // schon gewaehlt → abwaehlen
+    else smithProtectIndices.push(index);
     renderSmithSlot();
     return;
   }
@@ -2583,7 +2585,7 @@ ui.inventory.addEventListener("click", (event) => {
     selectSmithItem(index);
     return;
   }
-  if (def.type === "potion") usePotion();
+  if (def.type === "potion") usePotion(index);
   if (def.type === "weapon") equipWeapon(index);
   if (def.type === "armor") equipArmor(index);
   if (def.type === "boots") equipBoots(index);
@@ -6600,13 +6602,24 @@ function addInventory(id, count = 1) {
   renderInventory();
 }
 
-function usePotion() {
-  const potion = player.inventory.find((entry) => entry.id === "health_potion" && entry.count > 0);
-  if (!potion || player.hp >= player.maxHp) return;
+function usePotion(preferIndex = null) {
+  if (player.hp >= player.maxHp) { showToast("HP bereits voll."); return; }
+  let potion = null;
+  // Bestimmter Trank angeklickt → den nehmen; sonst staerksten verfuegbaren
+  if (preferIndex !== null && player.inventory[preferIndex]?.count > 0 && itemDefs[player.inventory[preferIndex].id]?.type === "potion") {
+    potion = player.inventory[preferIndex];
+  } else {
+    for (const id of ["super_potion", "greater_potion", "health_potion"]) {
+      const p = player.inventory.find((e) => e.id === id && e.count > 0);
+      if (p) { potion = p; break; }
+    }
+  }
+  if (!potion) return;
+  const def = itemDefs[potion.id];
   potion.count -= 1;
-  player.hp = Math.min(player.maxHp, player.hp + itemDefs.health_potion.heal);
+  player.hp = Math.min(player.maxHp, player.hp + (def.heal || 0));
   if (potion.count <= 0) player.inventory = player.inventory.filter((entry) => entry.count > 0);
-  showToast("Roter Trank genutzt.");
+  showToast(`${def.name} genutzt (+${def.heal} HP).`);
   sfx.potion();
   flashActionSlot(ui.actionPotion);
   skillFlashes.push({ color: "#51d37a", life: 0.14, maxLife: 0.14 });
@@ -6727,13 +6740,15 @@ const mergeMap = {
   mage_robe: "iron_armor", iron_armor: "silk_garb",
   // Rüstung — Schwer
   knight_plate: "steel_armor", steel_armor: "dragon_plate",
+  // Tränke — kleine zu groesseren mischen
+  health_potion: "greater_potion", greater_potion: "super_potion",
 };
 
 function tryAddToMerge(invIndex) {
   const inv = player.inventory[invIndex];
   if (!inv) return false;
   const def = itemDefs[inv.id];
-  if (!def || (def.type !== "weapon" && def.type !== "armor")) return false;
+  if (!def || (def.type !== "weapon" && def.type !== "armor" && def.type !== "potion")) return false;
   if (!mergeMap[inv.id]) return false;
   // Anti-Dupe: derselbe Inventar-Slot darf nur so oft rein wie sein Stapel gross ist
   const alreadyUsed = mergeSlots.filter((s) => s === invIndex).length;
@@ -6901,9 +6916,18 @@ function confirmMerge() {
   const success = roll < totalChance;
 
   if (success) {
-    const affixes = rollAffixes(targetDef.rarity);
-    const newEntry = { id: targetId, count: 1, upgrade: 0, affixes, justMerged: Date.now() };
-    player.inventory.push(newEntry);
+    const isGear = targetDef.type === "weapon" || targetDef.type === "armor";
+    const affixes = isGear ? rollAffixes(targetDef.rarity) : undefined;
+    const newEntry = { id: targetId, count: 1, upgrade: 0, justMerged: Date.now() };
+    if (affixes) newEntry.affixes = affixes;
+    // Tränke stapeln statt Einzel-Slots zu erzeugen
+    if (targetDef.type === "potion") {
+      const stack = player.inventory.find((e) => e.id === targetId);
+      if (stack) { stack.count = (stack.count || 1) + 1; stack.justMerged = Date.now(); }
+      else player.inventory.push(newEntry);
+    } else {
+      player.inventory.push(newEntry);
+    }
     showToast(`✓ Erfolg (${Math.round(totalChance * 100)}%): ${targetDef.name} erschaffen!`);
     sfx.smithSuccess();
     skillFlashes.push({ color: targetDef.color, life: 0.35, maxLife: 0.35 });
@@ -6957,12 +6981,15 @@ function matchesSmithMode(def, mode) {
   if (mode === "gear") return def.type === "boots" || def.type === "hat";
   return def.type === mode;
 }
-// Bruch-Risiko-Senkung durch ein legendäres Schutz-Opfer (10% + 5% je +Stufe, max 50%)
-function protectReduction(entry) {
-  if (!entry) return 0;
-  const def = itemDefs[entry.id];
-  if (!def || def.rarity !== "legendary") return 0;
-  return Math.min(0.5, 0.10 + (entry.upgrade || 0) * 0.05);
+// Bruch-Risiko-Senkung: 10% je geopfertes identisches Item, max 50%
+function protectReductionForCount(count) {
+  return Math.min(0.5, 0.10 * (count || 0));
+}
+// Gueltige Schutz-Opfer-Indizes (gleiche ID, existiert noch, nicht das Hauptitem)
+function validProtectIndices() {
+  const main = smithSelectedIndex !== null ? player.inventory[smithSelectedIndex] : null;
+  if (!main) return [];
+  return smithProtectIndices.filter((i) => i !== smithSelectedIndex && player.inventory[i] && player.inventory[i].id === main.id);
 }
 
 // Stat-Zeile fuer die Schmied-Vorschau (inkl. Upgrade-Level)
@@ -7015,7 +7042,7 @@ function selectSmithItem(index) {
     return;
   }
   smithSelectedIndex = index;
-  smithProtectIndex = null;
+  smithProtectIndices = [];
   smithPickProtect = false;
   renderSmithSlot();
   closeAllOverlays();
@@ -7036,7 +7063,7 @@ function renderSmithSlot() {
     slot.innerHTML = `<span class="smith-slot-hint">Klick im Inventar →</span>`;
     if (ui.smithCostList) ui.smithCostList.innerHTML = "<strong>Kein Item ausgewaehlt</strong>";
     ui.smithRiskBlock?.classList.add("hidden");
-    smithProtectIndex = null; smithPickProtect = false;
+    smithProtectIndices = []; smithPickProtect = false;
     renderProtectBlock(null);
     if (ui.upgradeWeapon) {
       ui.upgradeWeapon.disabled = true;
@@ -7087,9 +7114,9 @@ function renderSmithSlot() {
     }).join("");
   }
   const baseRisk = breakChance(nextLvl);
-  // Schutz-Opfer (nur fuer legendäre Items verfuegbar)
-  const protectEntry = smithProtectIndex !== null ? player.inventory[smithProtectIndex] : null;
-  const reduction = (def.rarity === "legendary" && protectEntry) ? protectReduction(protectEntry) : 0;
+  // Schutz-Opfer: gleiche Item-ID, 10% je Stueck
+  const protectCount = validProtectIndices().length;
+  const reduction = protectReductionForCount(protectCount);
   const risk = Math.max(0, baseRisk - reduction);
   if (ui.smithRiskBlock) {
     if (baseRisk > 0) {
@@ -7102,7 +7129,7 @@ function renderSmithSlot() {
       ui.smithRiskBlock.classList.add("hidden");
     }
   }
-  renderProtectBlock(def);
+  renderProtectBlock(def, entry);
   const canPay = canPayUpgrade(cost);
   const nearBlacksmith = isNearBlacksmith();
   if (ui.upgradeWeapon) {
@@ -7111,32 +7138,41 @@ function renderSmithSlot() {
   }
 }
 
-// Schutz-Opfer-Block: nur sichtbar wenn das Hauptitem legendär ist
-function renderProtectBlock(mainDef) {
+// Schutz-Opfer-Block: nutzbar wenn es identische Kopien des Hauptitems gibt
+function renderProtectBlock(mainDef, mainEntry) {
   const block = document.getElementById("smithProtectBlock");
   const slot = document.getElementById("smithProtectSlot");
   const pickBtn = document.getElementById("smithProtectPick");
   const clearBtn = document.getElementById("smithProtectClear");
   if (!block || !slot) return;
-  if (!mainDef || mainDef.rarity !== "legendary") {
+  // verfuegbare identische Kopien (gleiche ID, nicht Hauptitem, nicht ausgeruestet)
+  const spares = mainEntry ? player.inventory.filter((e, i) =>
+    e && e.id === mainEntry.id && i !== smithSelectedIndex
+    && i !== player.weaponIndex && i !== player.armorIndex && i !== player.bootsIndex && i !== player.hatIndex
+  ).length : 0;
+  if (!mainEntry || spares === 0) {
     block.classList.add("hidden");
-    smithProtectIndex = null; smithPickProtect = false;
+    smithProtectIndices = []; smithPickProtect = false;
     return;
   }
   block.classList.remove("hidden");
-  const entry = smithProtectIndex !== null ? player.inventory[smithProtectIndex] : null;
-  if (entry && itemDefs[entry.id]) {
-    const d = itemDefs[entry.id];
-    const icon = svgIconFor(entry, d.color) || `${d.icon || "?"}`;
+  // ungueltige (z.B. nachgerutschte) Auswahl bereinigen
+  smithProtectIndices = validProtectIndices();
+  const count = smithProtectIndices.length;
+  const helpEl = block.querySelector("small");
+  if (helpEl) helpEl.textContent = `🛡 Gleiche Items opfern — je −10% Bruch-Risiko (${spares} verfügbar)`;
+  if (count > 0) {
+    const d = mainDef;
+    const icon = svgIconFor(mainEntry, d.color) || `${d.icon || "?"}`;
     slot.className = `smith-item-slot ${d.rarity || ""}`;
-    slot.innerHTML = `<span class="smith-item-icon" style="color:${d.color || "#fff"}">${icon}</span><strong>${d.name} +${entry.upgrade || 0}</strong><small>−${Math.round(protectReduction(entry) * 100)}% Bruch-Risiko</small>`;
+    slot.innerHTML = `<span class="smith-item-icon" style="color:${d.color || "#fff"}">${icon}</span><strong>${count}× ${d.name}</strong><small>−${Math.round(protectReductionForCount(count) * 100)}% Bruch-Risiko</small>`;
     clearBtn?.classList.remove("hidden");
-    if (pickBtn) pickBtn.textContent = "Anderes wählen";
+    if (pickBtn) pickBtn.textContent = smithPickProtect ? "Fertig" : "Mehr wählen";
   } else {
     slot.className = "smith-item-slot empty";
     slot.innerHTML = smithPickProtect
-      ? `<span class="smith-slot-hint">Legendäres Item im Inventar anklicken…</span>`
-      : `<span class="smith-slot-hint">Legendäres Schutz-Opfer wählen →</span>`;
+      ? `<span class="smith-slot-hint">Gleiche Items im Inventar anklicken…</span>`
+      : `<span class="smith-slot-hint">Gleiche Items als Schutz wählen →</span>`;
     clearBtn?.classList.add("hidden");
     if (pickBtn) pickBtn.textContent = smithPickProtect ? "Abbrechen" : "Schutz wählen";
   }
@@ -7166,9 +7202,9 @@ function smithUpgradeSelected() {
     return;
   }
   payUpgrade(cost);
-  // Schutz-Opfer (nur fuer legendäre Items) senkt das Bruch-Risiko, wird dabei verbraucht
-  const protectEntry = (def.rarity === "legendary" && smithProtectIndex !== null) ? player.inventory[smithProtectIndex] : null;
-  const reduction = protectEntry ? protectReduction(protectEntry) : 0;
+  // Schutz-Opfer: identische Items senken das Risiko (10% je Stueck) und werden verbraucht
+  const protectIdxs = validProtectIndices();
+  const reduction = protectReductionForCount(protectIdxs.length);
   const risk = Math.max(0, breakChance(nextLvl) - reduction);
   const broke = Math.random() < risk;
   if (broke) {
@@ -7180,21 +7216,22 @@ function smithUpgradeSelected() {
     showToast(`${def.name} auf +${nextLvl} aufgewertet!`);
     skillFlashes.push({ color: "#f4c95d", life: 0.2, maxLife: 0.2 });
   }
-  // Items entfernen: Schutz-Opfer immer (falls genutzt), Hauptitem nur bei Bruch.
+  // Items entfernen: alle Schutz-Opfer immer, Hauptitem nur bei Bruch.
   // Hohe Indizes zuerst splicen, damit niedrigere Indizes gueltig bleiben.
-  const protectIdx = protectEntry ? smithProtectIndex : -1;
   const mainIdx = smithSelectedIndex;
-  const toRemove = [];
-  if (protectIdx >= 0) toRemove.push(protectIdx);
+  const toRemove = [...protectIdxs];
   if (broke) toRemove.push(mainIdx);
-  toRemove.sort((a, b) => b - a).forEach((idx) => { player.inventory.splice(idx, 1); shiftEquipIndices(idx); });
+  // doppelte vermeiden + absteigend sortieren
+  [...new Set(toRemove)].sort((a, b) => b - a).forEach((idx) => { player.inventory.splice(idx, 1); shiftEquipIndices(idx); });
   if (broke) {
     smithSelectedIndex = null;
-  } else if (protectIdx >= 0 && protectIdx < mainIdx) {
-    smithSelectedIndex = mainIdx - 1; // Hauptitem ist nachgerutscht
+  } else {
+    // Hauptitem ist um die Anzahl der davor entfernten Opfer nachgerutscht
+    const removedBelow = protectIdxs.filter((i) => i < mainIdx).length;
+    smithSelectedIndex = mainIdx - removedBelow;
   }
-  if (protectEntry) showToast(`🛡 Schutz-Opfer ${itemDefs[protectEntry.id].name} verbraucht.`);
-  smithProtectIndex = null; smithPickProtect = false;
+  if (protectIdxs.length) showToast(`🛡 ${protectIdxs.length}× Schutz-Opfer verbraucht.`);
+  smithProtectIndices = []; smithPickProtect = false;
   renderInventory();
   renderSmithSlot();
   updateUi();
@@ -8698,7 +8735,7 @@ function drawAmbientParticles(cam, wDef) {
   }
 }
 
-function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, accent = null, accentColor = null, walkPhase = 0, breath = 0) {
+function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, accent = null, accentColor = null, walkPhase = 0, breath = 0, gear = null) {
   ctx.save();
   ctx.translate(x, y + breath);
   ctx.rotate(facing * 0.08);
@@ -8808,6 +8845,25 @@ function drawBlockPerson(x, y, colors, scale = 1, facing = 0, hurt = false, acce
     ctx.fillStyle = hairColor;
     ctx.fillRect(-12 * scale, -54 * scale, 5 * scale, 4 * scale);
     ctx.fillRect(7 * scale, -54 * scale, 5 * scale, 4 * scale);
+  }
+  // Ausgeruestete Schuhe: Farbe ueber die Fuesse
+  if (gear?.boots) {
+    ctx.fillStyle = hurt ? "#ffffff" : gear.boots;
+    ctx.fillRect(-17 * scale, (28 + legA) * scale, 13 * scale, 6 * scale);
+    ctx.fillRect(4 * scale, (28 + legB) * scale, 13 * scale, 6 * scale);
+  }
+  // Ausgeruesteter Hut: Krempe + Spitze ueber dem Kopf
+  if (gear?.hat) {
+    const hc = hurt ? "#ffffff" : gear.hat;
+    ctx.fillStyle = hc;
+    ctx.fillRect(-18 * scale, -58 * scale, 36 * scale, 5 * scale);
+    ctx.beginPath();
+    ctx.moveTo(-12 * scale, -58 * scale);
+    ctx.lineTo(0, -72 * scale);
+    ctx.lineTo(12 * scale, -58 * scale);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = hurt ? "#ffffff" : "rgba(255,255,255,0.7)";
+    ctx.fillRect(-2 * scale, -70 * scale, 4 * scale, 4 * scale);
   }
   ctx.restore();
 }
@@ -9636,18 +9692,26 @@ function drawPlayer() {
     ctx.translate(-player.x, -player.y);
   }
   const bearActive = player.bearForm > 0;
-  const bodyColor = bearActive ? "#7c3a1d" : classDef.color;
+  // Ausgeruestete Ausruestung nach aussen projizieren (wie in der Charakter-Vorschau)
+  const armorItem = !bearActive ? equippedArmorItem() : null;
+  const bootsItem = !bearActive ? equippedBootsItem() : null;
+  const hatItem = !bearActive ? equippedHatItem() : null;
+  const bodyColor = bearActive ? "#7c3a1d" : (armorItem ? itemDefs[armorItem.id].color : classDef.color);
   const headColor = bearActive ? "#92400e" : "#f3c7a1";
   const armColor = bearActive ? "#7c3a1d" : "#f3c7a1";
   const legColor = bearActive ? "#5b2a13" : (classDef.id === "warrior" ? "#5d2f28" : classDef.id === "shadow" ? "#26214f" : "#21513d");
   const playerScale = bearActive ? 1.35 : 1.05;
+  const gear = bearActive ? null : {
+    boots: bootsItem ? itemDefs[bootsItem.id].color : null,
+    hat: hatItem ? itemDefs[hatItem.id].color : null,
+  };
   drawBlockPerson(player.x, player.y, {
     head: headColor,
     body: bodyColor,
     arms: armColor,
     legs: legColor,
   }, playerScale, facing, (player.invuln > 0 && Math.floor(performance.now() / 80) % 2 === 0) || player.hitFlash > 0,
-    classDef.bodyAccent, classDef.accent, player.walkPhase, breath);
+    classDef.bodyAccent, classDef.accent, player.walkPhase, breath, gear);
   if (!bearActive) drawEquippedWeapon(facing, classDef);
   ctx.restore();
   // Touch: Aim-Pfeil zeigt aktuelle Skill-Richtung
