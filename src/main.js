@@ -1973,14 +1973,14 @@ function applySmithMode(mode) {
     renderSocketBlock();
   } else {
     upgradeBlock?.classList.remove("hidden");
-    inventoryFilter = mode; // "weapon" oder "armor"
+    inventoryFilter = mode; // "weapon", "armor" oder "gear"
     if (smithSelectedIndex !== null) {
       const inv = player.inventory[smithSelectedIndex];
       const def = inv ? itemDefs[inv.id] : null;
-      if (!def || def.type !== mode) smithSelectedIndex = null;
+      if (!matchesSmithMode(def, mode)) smithSelectedIndex = null;
     }
     const label = document.querySelector("#smithModeLabel");
-    if (label) label.textContent = mode === "armor" ? "Rüstung legen" : "Waffe legen";
+    if (label) label.textContent = mode === "armor" ? "Rüstung legen" : mode === "gear" ? "Schuhe/Hut legen" : "Waffe legen";
     renderSmithSlot();
   }
   renderInventory();
@@ -2501,8 +2501,8 @@ smithInventoryEl?.addEventListener("click", (event) => {
     return;
   }
   // Upgrade-Modus
-  if (def.type !== smithMode) {
-    showToast(smithMode === "weapon" ? "Wähle eine Waffe." : "Wähle eine Rüstung.");
+  if (!matchesSmithMode(def, smithMode)) {
+    showToast(smithMode === "weapon" ? "Wähle eine Waffe." : smithMode === "gear" ? "Wähle Schuhe oder einen Hut." : "Wähle eine Rüstung.");
     return;
   }
   selectSmithItem(index);
@@ -2554,7 +2554,7 @@ ui.inventory.addEventListener("click", (event) => {
     if (def.type === "rune") { socketRuneIntoSelected(index); return; }
     return; // andere Items im Sockel-Modus ignorieren
   }
-  if (smithOpen && (def.type === "weapon" || def.type === "armor")) {
+  if (smithOpen && isUpgradable(def)) {
     selectSmithItem(index);
     return;
   }
@@ -6882,6 +6882,33 @@ function confirmMerge() {
   saveCurrentCharacter();
 }
 
+// Welche Item-Typen koennen aufgewertet werden
+function isUpgradable(def) {
+  return !!def && (def.type === "weapon" || def.type === "armor" || def.type === "boots" || def.type === "hat");
+}
+// Kosten-Klasse: Waffe teurer, Ruestung/Schuhe/Huete guenstiger
+function upgradeKindOf(def) {
+  return def?.type === "weapon" ? "weapon" : "armor";
+}
+// Passt das Item zum aktuellen Schmied-Tab?
+function matchesSmithMode(def, mode) {
+  if (!def) return false;
+  if (mode === "gear") return def.type === "boots" || def.type === "hat";
+  return def.type === mode;
+}
+// Stat-Zeile fuer die Schmied-Vorschau (inkl. Upgrade-Level)
+function smithStatLine(def, lvl) {
+  if (def.type === "boots") return `+${Math.round(((def.speed || 0) + lvl * 0.02) * 100)}% Tempo`;
+  if (def.type === "hat") {
+    const parts = [];
+    if (def.bonusAttack) parts.push(`+${def.bonusAttack + lvl * 2} Angriff`);
+    if (def.bonusCrit) parts.push(`+${Math.round(def.bonusCrit * 100)}% Krit`);
+    return parts.join(", ");
+  }
+  if (def.type === "armor") return `${def.defense + lvl * 4} Verteidigung`;
+  return `${def.attack + lvl * 3} Angriff`;
+}
+
 function upgradeCost(nextLevel, kind, rarity = "common") {
   // Legendäre Items: deutlich teurer + brauchen Uralte Relikte (Boss-Material)
   const legendary = rarity === "legendary";
@@ -6914,8 +6941,8 @@ function selectSmithItem(index) {
   const entry = player.inventory[index];
   if (!entry) return;
   const def = itemDefs[entry.id];
-  if (!def || (def.type !== "weapon" && def.type !== "armor")) {
-    showToast("Nur Waffen oder Rüstungen können aufgewertet werden.");
+  if (!isUpgradable(def)) {
+    showToast("Nur Waffen, Rüstung, Schuhe oder Hüte können aufgewertet werden.");
     return;
   }
   smithSelectedIndex = index;
@@ -6945,14 +6972,15 @@ function renderSmithSlot() {
     return;
   }
   const def = itemDefs[entry.id];
-  const kind = def.type === "armor" ? "armor" : "weapon";
+  const kind = upgradeKindOf(def);
   const curLvl = entry.upgrade || 0;
   const nextLvl = curLvl + 1;
   slot.className = `smith-item-slot ${def.rarity || ""}`;
+  const smithIcon = svgIconFor(entry, def.color) || `${def.icon || "?"}`;
   slot.innerHTML = `
-    <span class="smith-item-icon" style="color:${def.color || "#f4f0df"}">${def.icon || "?"}</span>
+    <span class="smith-item-icon" style="color:${def.color || "#f4f0df"}">${smithIcon}</span>
     <strong>${def.name} +${curLvl}</strong>
-    <small>${kind === "weapon" ? `${def.attack + curLvl * 3} Angriff` : `${def.defense + curLvl * 4} Verteidigung`}</small>
+    <small>${smithStatLine(def, curLvl)}</small>
   `;
   if (nextLvl > 9) {
     if (ui.smithCostList) ui.smithCostList.innerHTML = "<strong>Max-Level erreicht (+9)</strong>";
@@ -7011,7 +7039,7 @@ function smithUpgradeSelected() {
   const entry = player.inventory[smithSelectedIndex];
   if (!entry) return;
   const def = itemDefs[entry.id];
-  const kind = def.type === "armor" ? "armor" : "weapon";
+  const kind = upgradeKindOf(def);
   const curLvl = entry.upgrade || 0;
   const nextLvl = curLvl + 1;
   if (nextLvl > 9) {
@@ -7896,9 +7924,43 @@ function renderCharPreview() {
     p.fillRect(cx - 17 * s, cy + 26 * s, 14 * s, 8 * s);
     p.fillRect(cx + 3 * s, cy + 26 * s, 14 * s, 8 * s);
   }
-  // Körper
-  p.fillStyle = classDef.color;
+  // Körper — Farbe + Form spiegeln die ausgeruestete Rüstung wider
+  const armorDef = equippedArmorItem();
+  const aDef = armorDef ? itemDefs[armorDef.id] : null;
+  const bodyColor = aDef?.color || classDef.color;
+  p.fillStyle = bodyColor;
   p.fillRect(cx - 18 * s, cy - 22 * s, 36 * s, 34 * s);
+  // Rüstungs-Typ-Details
+  if (aDef) {
+    const aType = aDef.armorType;
+    if (aType === "schwer") {
+      // Platten-Trim + Brustplatte
+      p.fillStyle = "rgba(255,255,255,0.25)";
+      p.fillRect(cx - 18 * s, cy - 22 * s, 36 * s, 4 * s);
+      p.fillRect(cx - 4 * s, cy - 18 * s, 8 * s, 28 * s);
+      p.strokeStyle = "rgba(0,0,0,0.3)"; p.lineWidth = 2;
+      p.strokeRect(cx - 18 * s, cy - 22 * s, 36 * s, 34 * s);
+    } else if (aType === "leicht") {
+      // Robe/Stoff mit V-Kragen
+      p.fillStyle = "rgba(255,255,255,0.18)";
+      p.beginPath(); p.moveTo(cx - 10 * s, cy - 22 * s); p.lineTo(cx, cy - 8 * s); p.lineTo(cx + 10 * s, cy - 22 * s); p.closePath(); p.fill();
+    } else {
+      // Leder — Riemen
+      p.strokeStyle = "rgba(0,0,0,0.28)"; p.lineWidth = 2;
+      p.beginPath(); p.moveTo(cx - 14 * s, cy - 18 * s); p.lineTo(cx + 14 * s, cy + 6 * s); p.stroke();
+    }
+    // Upgrade-Glanz bei +Stufen
+    if ((armorDef.upgrade || 0) > 0) {
+      p.fillStyle = "#fde047"; p.font = `bold ${9 * (s / 1.7)}px sans-serif`; p.textAlign = "center";
+      p.fillText(`+${armorDef.upgrade}`, cx, cy - 26 * s);
+    }
+  }
+  // Schulterpolster bei schwerer Rüstung
+  if (aDef?.armorType === "schwer") {
+    p.fillStyle = bodyColor;
+    p.fillRect(cx - 34 * s, cy - 22 * s, 14 * s, 8 * s);
+    p.fillRect(cx + 20 * s, cy - 22 * s, 14 * s, 8 * s);
+  }
   // Arme
   p.fillStyle = "#f3c7a1";
   p.fillRect(cx - 32 * s, cy - 18 * s, 12 * s, 32 * s);
