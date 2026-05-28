@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=boss-balance-stones" />
+    <link rel="stylesheet" href="styles.css?v=smith-socket-ui" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -420,6 +420,7 @@
         <div class="smith-mode-tabs" role="group" aria-label="Schmiede-Modus">
           <button type="button" data-smith-mode="weapon" class="active">⚔ Waffe verbessern</button>
           <button type="button" data-smith-mode="armor">🛡 Ruestung verbessern</button>
+          <button type="button" data-smith-mode="socket">💎 Sockeln</button>
           <button type="button" data-smith-mode="merge">✦ Verschmelzen</button>
         </div>
         <div class="smith-with-inv">
@@ -452,6 +453,27 @@
                 </ul>
               </div>
             </div>
+            <!-- Sockel-Modus -->
+            <div id="smithSocketBlock" class="smith-block hidden">
+              <strong>💎 Runen sockeln</strong>
+              <small>1. Waffe im Inventar anklicken (Selten+ hat Sockel). 2. Rune im Inventar anklicken → wird in den nächsten freien Sockel gesetzt.</small>
+              <div id="socketWeaponSlot" class="smith-item-slot empty">
+                <span class="smith-slot-hint">Waffe legen →</span>
+              </div>
+              <div id="socketSlots" class="socket-slots"></div>
+              <div id="socketWord" class="socket-word hidden"></div>
+              <div class="smith-actions">
+                <button id="socketReturn" type="button">Waffe zurueck</button>
+              </div>
+              <div class="smith-help">
+                <strong>Sockel-Anzahl</strong>
+                <ul>
+                  <li>Selten: 1 Sockel · Episch: 2 · Legendär: 3</li>
+                  <li>3 passende Runen = Runen-Wort (Spezial-Bonus)</li>
+                  <li>Runen droppen aus Metin-Steinen + Bossen</li>
+                </ul>
+              </div>
+            </div>
             <!-- Merge-Modus -->
             <div id="smithMergeBlock" class="smith-block hidden">
               <strong>Verschmelzen</strong>
@@ -477,7 +499,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=boss-balance-stones"></script>
-    <script type="module" src="src/main.js?v=boss-balance-stones"></script>
+    <script type="module" src="firebase-config.js?v=smith-socket-ui"></script>
+    <script type="module" src="src/main.js?v=smith-socket-ui"></script>
   </body>
 </html>

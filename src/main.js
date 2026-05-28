@@ -1861,19 +1861,23 @@ function applySmithMode(mode) {
   document.querySelectorAll("[data-smith-mode]").forEach((b) => b.classList.toggle("active", b.dataset.smithMode === mode));
   const upgradeBlock = document.querySelector("#smithUpgradeBlock");
   const mergeBlock = document.querySelector("#smithMergeBlock");
+  const socketBlock = document.querySelector("#smithSocketBlock");
+  upgradeBlock?.classList.add("hidden");
+  mergeBlock?.classList.add("hidden");
+  socketBlock?.classList.add("hidden");
   if (mode === "merge") {
-    upgradeBlock?.classList.add("hidden");
     mergeBlock?.classList.remove("hidden");
-    inventoryFilter = "weapon"; // Common-Waffen sind verschmelzbar — Filter zeigt sie an
-    // Reset Smith-Slot wenn vorher etwas drin war
+    inventoryFilter = "weapon";
     smithSelectedIndex = null;
     renderSmithSlot();
     renderMergeSlots();
+  } else if (mode === "socket") {
+    socketBlock?.classList.remove("hidden");
+    inventoryFilter = "all"; // Waffen + Runen sichtbar
+    renderSocketBlock();
   } else {
     upgradeBlock?.classList.remove("hidden");
-    mergeBlock?.classList.add("hidden");
     inventoryFilter = mode; // "weapon" oder "armor"
-    // Wenn aktueller Smith-Slot nicht zum Modus passt → leeren
     if (smithSelectedIndex !== null) {
       const inv = player.inventory[smithSelectedIndex];
       const def = inv ? itemDefs[inv.id] : null;
@@ -1885,6 +1889,116 @@ function applySmithMode(mode) {
   }
   renderInventory();
 }
+
+// === Sockel-Tab Logik ===
+let socketSelectedIndex = null; // Inventar-Index der zu sockelnden Waffe
+
+function renderSocketBlock() {
+  const slotEl = document.querySelector("#socketWeaponSlot");
+  const slotsEl = document.querySelector("#socketSlots");
+  const wordEl = document.querySelector("#socketWord");
+  if (!slotEl || !slotsEl) return;
+  const entry = socketSelectedIndex !== null ? player.inventory[socketSelectedIndex] : null;
+  const def = entry ? itemDefs[entry.id] : null;
+  if (!entry || !def || def.type !== "weapon") {
+    socketSelectedIndex = null;
+    slotEl.className = "smith-item-slot empty";
+    slotEl.innerHTML = `<span class="smith-slot-hint">Waffe legen →</span>`;
+    slotsEl.innerHTML = "";
+    wordEl?.classList.add("hidden");
+    return;
+  }
+  // Waffe anzeigen
+  const iconHtml = svgIconFor(entry, def.color) || `<span class="icon" style="color:${def.color}">${def.icon}</span>`;
+  slotEl.className = `smith-item-slot filled ${def.rarity}`;
+  slotEl.innerHTML = `${iconHtml}<span class="smith-slot-name">${itemLabel(entry)}</span>`;
+  // Sockel rendern
+  const maxS = weaponSocketCount(entry);
+  entry.sockets = entry.sockets || [];
+  slotsEl.innerHTML = "";
+  if (maxS === 0) {
+    slotsEl.innerHTML = `<small style="color:var(--muted)">Diese Waffe hat keine Sockel (Selten+ nötig).</small>`;
+  }
+  for (let i = 0; i < maxS; i += 1) {
+    const rid = entry.sockets[i];
+    const slot = document.createElement("div");
+    slot.className = "socket-slot " + (rid ? "filled" : "empty");
+    if (rid) {
+      const col = runeColor(rid);
+      const r = parseRune(rid);
+      slot.style.color = col;
+      slot.style.borderColor = col;
+      slot.innerHTML = `<span>${r?.def.icon || "💎"}</span><span class="rune-remove" title="Rune entfernen">×</span>`;
+      slot.title = runeLabel(rid);
+      slot.querySelector(".rune-remove").addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeRuneFromSocket(socketSelectedIndex, i);
+      });
+    } else {
+      slot.title = "Leerer Sockel — Rune im Inventar anklicken";
+    }
+    slotsEl.append(slot);
+  }
+  // Runen-Wort anzeigen
+  const word = activeRuneWord(entry.sockets);
+  if (word && wordEl) {
+    wordEl.classList.remove("hidden");
+    wordEl.innerHTML = `★ ${word.name}<br><small>${word.desc}</small>`;
+  } else {
+    wordEl?.classList.add("hidden");
+  }
+}
+
+function selectSocketWeapon(index) {
+  const entry = player.inventory[index];
+  if (!entry || itemDefs[entry.id]?.type !== "weapon") return;
+  socketSelectedIndex = index;
+  renderSocketBlock();
+}
+
+function socketRuneIntoSelected(runeIndex) {
+  if (socketSelectedIndex === null) { showToast("Erst eine Waffe legen."); return; }
+  const weapon = player.inventory[socketSelectedIndex];
+  const rune = player.inventory[runeIndex];
+  if (!weapon || !rune) return;
+  const maxS = weaponSocketCount(weapon);
+  if (maxS <= 0) { showToast("Diese Waffe hat keine Sockel (Selten+ nötig)."); return; }
+  weapon.sockets = weapon.sockets || [];
+  if (weapon.sockets.length >= maxS) { showToast(`Alle ${maxS} Sockel belegt.`); return; }
+  weapon.sockets.push(rune.id);
+  rune.count = (rune.count || 1) - 1;
+  if (rune.count <= 0) {
+    player.inventory.splice(runeIndex, 1);
+    if (runeIndex < socketSelectedIndex) socketSelectedIndex -= 1; // Index nachziehen
+  }
+  sfx.pickup?.();
+  const word = activeRuneWord(weapon.sockets);
+  showToast(word ? `Rune gesockelt! Runen-Wort aktiv: ${word.name}!` : `Rune gesockelt (${weapon.sockets.length}/${maxS}).`);
+  saveCurrentCharacter();
+  renderSocketBlock();
+  renderInventory();
+}
+
+function removeRuneFromSocket(weaponIndex, socketIdx) {
+  const weapon = player.inventory[weaponIndex];
+  if (!weapon || !weapon.sockets) return;
+  const rid = weapon.sockets[socketIdx];
+  if (!rid) return;
+  weapon.sockets.splice(socketIdx, 1);
+  // Rune zurueck ins Inventar
+  const existing = player.inventory.find((e) => e.id === rid);
+  if (existing) existing.count = (existing.count || 1) + 1;
+  else player.inventory.push(item(rid, 1));
+  showToast("Rune entfernt — zurueck im Inventar.");
+  saveCurrentCharacter();
+  renderSocketBlock();
+  renderInventory();
+}
+
+document.querySelector("#socketReturn")?.addEventListener("click", () => {
+  socketSelectedIndex = null;
+  renderSocketBlock();
+});
 
 document.querySelectorAll("[data-smith-mode]").forEach((btn) => {
   btn.addEventListener("click", () => applySmithMode(btn.dataset.smithMode));
@@ -2264,6 +2378,12 @@ smithInventoryEl?.addEventListener("click", (event) => {
     tryAddToMerge(index);
     return;
   }
+  if (smithMode === "socket") {
+    if (def.type === "weapon") { selectSocketWeapon(index); return; }
+    if (def.type === "rune") { socketRuneIntoSelected(index); return; }
+    showToast("Lege eine Waffe und klicke dann Runen.");
+    return;
+  }
   // Upgrade-Modus
   if (def.type !== smithMode) {
     showToast(smithMode === "weapon" ? "Wähle eine Waffe." : "Wähle eine Rüstung.");
@@ -2311,8 +2431,13 @@ ui.inventory.addEventListener("click", (event) => {
   const index = Number(slot.dataset.index);
   const invItem = player.inventory[index];
   const def = itemDefs[invItem.id];
-  // Wenn Schmied-Overlay offen → Item für Aufwertung waehlen statt equippen
+  // Wenn Schmied-Overlay offen → mode-abhaengig
   const smithOpen = ui.smithOverlay && !document.querySelector("#smithOverlay").classList.contains("hidden");
+  if (smithOpen && smithMode === "socket") {
+    if (def.type === "weapon") { selectSocketWeapon(index); return; }
+    if (def.type === "rune") { socketRuneIntoSelected(index); return; }
+    return; // andere Items im Sockel-Modus ignorieren
+  }
   if (smithOpen && (def.type === "weapon" || def.type === "armor")) {
     selectSmithItem(index);
     return;
