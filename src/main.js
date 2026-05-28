@@ -3754,11 +3754,12 @@ function renderGamble() {
   if (invEl) {
     invEl.innerHTML = "";
     const rarityRank = { legendary: 4, epic: 3, rare: 2, common: 1 };
+    const gambleTypes = ["weapon", "armor", "boots", "hat"]; // nur Ausruestung — keine Tränke/Edelsteine/Materialien
     const entries = player.inventory
       .map((e, idx) => ({ e, idx }))
       .filter(({ e, idx }) => e && !gamblePot.has(idx)
         && idx !== player.weaponIndex && idx !== player.armorIndex && idx !== player.bootsIndex && idx !== player.hatIndex
-        && itemDefs[e.id])
+        && itemDefs[e.id] && gambleTypes.includes(itemDefs[e.id].type))
       .sort((a, b) => {
         const ra = rarityRank[itemDefs[a.e.id].rarity] || 0;
         const rb = rarityRank[itemDefs[b.e.id].rarity] || 0;
