@@ -1268,6 +1268,8 @@ body.is-touch .hud-menu-toggle { display: none; }
   box-shadow: 0 0 10px rgba(236,72,153,0.3);
 }
 .pet-active-btn.hidden { display: none; }
+.pet-select { min-height: 32px; padding: 0 8px; border: 1px solid var(--gold); border-radius: 6px; background: rgba(10,10,20,0.6); color: #f4f0df; font-weight: 700; }
+.pet-select.hidden { display: none; }
 
 .overlay-hint {
   color: var(--muted);

@@ -2186,6 +2186,7 @@ document.querySelector("#traderList")?.addEventListener("click", (event) => {
 });
 document.querySelector("#trainerResetBtn")?.addEventListener("click", trainerReset);
 document.querySelector("#petToggleBtn")?.addEventListener("click", togglePet);
+document.querySelector("#petSelect")?.addEventListener("change", (e) => setActivePet(e.target.value));
 document.querySelector("#petActiveBtn")?.addEventListener("click", triggerPetActive);
 
 ui.talentList?.addEventListener("click", (event) => {
@@ -9040,6 +9041,11 @@ function getActivePetDef() {
   return bosses[player.activePet]?.pet || specialPets[player.activePet] || null;
 }
 
+// Anzeigename eines Pets per ID (Boss-Pet oder legendäres Spezial-Pet)
+function petDisplayName(id) {
+  return bosses[id]?.pet?.name || specialPets[id]?.name || "Pet";
+}
+
 function initPetRuntime() {
   const def = getActivePetDef();
   if (!def) { petRuntime = null; return; }
@@ -9054,8 +9060,18 @@ function initPetRuntime() {
 function renderPetSlot() {
   const nameEl = document.querySelector("#petName");
   const btn = document.querySelector("#petToggleBtn");
+  const sel = document.querySelector("#petSelect");
   if (!nameEl || !btn) return;
   const unlocked = Object.keys(player.pets || {});
+  if (sel) {
+    if (unlocked.length === 0) {
+      sel.classList.add("hidden");
+    } else {
+      sel.classList.remove("hidden");
+      sel.innerHTML = `<option value="">— kein Pet —</option>` +
+        unlocked.map((id) => `<option value="${id}"${id === player.activePet ? " selected" : ""}>${petDisplayName(id)}</option>`).join("");
+    }
+  }
   if (unlocked.length === 0) {
     nameEl.textContent = "Kein Pet freigeschaltet";
     btn.disabled = true;
@@ -9086,23 +9102,34 @@ function renderPetSlot() {
   }
 }
 
+// Pet per ID aktivieren ("" oder null = absetzen)
+function setActivePet(id) {
+  if (!id) {
+    player.activePet = null;
+    petRuntime = null;
+    showToast("Pet abgesetzt.");
+  } else if (player.pets?.[id]) {
+    player.activePet = id;
+    initPetRuntime();
+    showToast(`${petDisplayName(id)} folgt dir.`);
+  }
+  renderPetSlot();
+  saveCurrentCharacter();
+}
+
 function togglePet() {
   if (!player.pets || Object.keys(player.pets).length === 0) {
     showToast("Du hast noch kein Pet. Besiege Welt-Bosse zum Freischalten.");
     return;
   }
   if (player.activePet) {
-    player.activePet = null;
-    petRuntime = null;
-    showToast("Pet abgesetzt.");
+    setActivePet(null);
   } else {
-    const unlocked = Object.keys(player.pets);
-    player.activePet = unlocked[0];
-    initPetRuntime();
-    showToast("Pet zurück an deiner Seite.");
+    // Im Dropdown gewaehltes Pet rufen, sonst das erste freigeschaltete
+    const sel = document.querySelector("#petSelect");
+    const pick = (sel && sel.value) ? sel.value : Object.keys(player.pets)[0];
+    setActivePet(pick);
   }
-  renderPetSlot();
-  saveCurrentCharacter();
 }
 
 // Aktive Pet-Faehigkeit ausloesen (Taste T / Pet-Button). Nur legendaere Pets haben eine.
@@ -9714,6 +9741,30 @@ function drawPlayer() {
     classDef.bodyAccent, classDef.accent, player.walkPhase, breath, gear);
   if (!bearActive) drawEquippedWeapon(facing, classDef);
   ctx.restore();
+  // Rüstungs-Glanz ab +7 — glitzert staerker, je hoeher die Aufwertung
+  const armorUpg = armorItem?.upgrade || 0;
+  if (armorUpg >= 7) {
+    const t = performance.now() / 1000;
+    const intensity = armorUpg - 6; // +7=1, +8=2, +9=3
+    const col = itemDefs[armorItem.id].color || "#fff2a8";
+    ctx.save();
+    ctx.globalAlpha = 0.30 + 0.28 * (0.5 + 0.5 * Math.sin(t * 6));
+    ctx.strokeStyle = col;
+    ctx.lineWidth = 1.5 + intensity * 0.9;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y - 4, player.r + 9 + intensity * 2, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+    // Glitzer-Funken (mehr je hoeher)
+    if (Math.random() < 0.10 * intensity) {
+      particles.push({
+        x: player.x + (Math.random() - 0.5) * 46,
+        y: player.y - 18 + (Math.random() - 0.5) * 46,
+        vx: (Math.random() - 0.5) * 18, vy: -18 - Math.random() * 28,
+        life: 0.5, color: Math.random() < 0.5 ? col : "#ffffff", size: 2 + Math.random() * 2,
+      });
+    }
+  }
   // Touch: Aim-Pfeil zeigt aktuelle Skill-Richtung
   if (isTouchDevice) drawAimIndicator();
   // Bear-Form-Aura

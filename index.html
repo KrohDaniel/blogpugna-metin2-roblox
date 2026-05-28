@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=armor-drops" />
+    <link rel="stylesheet" href="styles.css?v=pet-select-glow" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -310,6 +310,7 @@
             <div class="pet-slot" id="petSlotBlock">
               <small>Pet</small>
               <strong id="petName">Keines</strong>
+              <select id="petSelect" class="pet-select hidden" aria-label="Pet auswählen"></select>
               <button id="petToggleBtn" type="button">An/Aus</button>
               <button id="petActiveBtn" type="button" class="pet-active-btn hidden">Spezial (Z)</button>
             </div>
@@ -588,7 +589,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=armor-drops"></script>
-    <script type="module" src="src/main.js?v=armor-drops"></script>
+    <script type="module" src="firebase-config.js?v=pet-select-glow"></script>
+    <script type="module" src="src/main.js?v=pet-select-glow"></script>
   </body>
 </html>
