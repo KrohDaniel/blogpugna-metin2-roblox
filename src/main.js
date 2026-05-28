@@ -3750,14 +3750,23 @@ function renderGamble() {
       potEl.append(d);
     }
   }
-  // Inventar
+  // Inventar — nach Wertigkeit sortiert (legendär oben, Trash unten)
   if (invEl) {
     invEl.innerHTML = "";
-    player.inventory.forEach((e, idx) => {
-      if (!e || gamblePot.has(idx)) return;
-      if (idx === player.weaponIndex || idx === player.armorIndex || idx === player.bootsIndex || idx === player.hatIndex) return; // ausgeruestetes schuetzen
+    const rarityRank = { legendary: 4, epic: 3, rare: 2, common: 1 };
+    const entries = player.inventory
+      .map((e, idx) => ({ e, idx }))
+      .filter(({ e, idx }) => e && !gamblePot.has(idx)
+        && idx !== player.weaponIndex && idx !== player.armorIndex && idx !== player.bootsIndex && idx !== player.hatIndex
+        && itemDefs[e.id])
+      .sort((a, b) => {
+        const ra = rarityRank[itemDefs[a.e.id].rarity] || 0;
+        const rb = rarityRank[itemDefs[b.e.id].rarity] || 0;
+        if (rb !== ra) return rb - ra;
+        return itemGambleValue(b.e) - itemGambleValue(a.e);
+      });
+    entries.forEach(({ e, idx }) => {
       const def = itemDefs[e.id];
-      if (!def) return;
       const slot = document.createElement("button");
       slot.type = "button";
       slot.className = `slot ${def.rarity || ""}`;
@@ -3849,7 +3858,10 @@ function grantGambleReward(reward) {
   if (reward.itemId && itemDefs[reward.itemId]) showToast(`Gewonnen: ${itemDefs[reward.itemId].name}${reward.count > 1 ? ` x${reward.count}` : ""} — im Inventar!`);
   else if (reward.petId && specialPets[reward.petId]) showToast(`Gewonnen: ${specialPets[reward.petId].name} — Pet freigeschaltet!`);
   else if (reward.gold) showToast(`Gewonnen: ${reward.gold} Gold!`);
-  sfx[reward.cls === "jackpot" ? "ulti" : reward.cls === "win" ? "levelUp" : "hit"]?.();
+  // Immer ein positives Geraeusch — Jackpot gross, Gewinn Fanfare, Trostpreis freundlicher Pickup
+  if (reward.cls === "jackpot") sfx.gambleJackpot?.();
+  else if (reward.cls === "win") sfx.gambleWin?.();
+  else sfx.pickup?.();
   if (reward.cls === "jackpot") { cameraShake = 0.5; skillFlashes.push({ color: "#ec4899", life: 0.6, maxLife: 0.6 }); }
   saveCurrentCharacter();
   renderInventory();
@@ -3903,6 +3915,15 @@ function playGambleReel(reward, onDone) {
     strip.style.transition = "transform 5.2s cubic-bezier(0.08, 0.62, 0.04, 1)";
     strip.style.transform = `translateX(${target}px)`;
   });
+  // Tick-Sounds synchron zur Verzoegerung: dicht am Anfang, immer langsamer.
+  // Zeitpunkt jeder vorbeiziehenden Zelle ueber die Umkehrung der Ease-Out-Kurve.
+  const DUR = 5200, TICKS = 46;
+  for (let i = 1; i <= TICKS; i += 1) {
+    const t = DUR * (1 - Math.pow(1 - i / TICKS, 1 / 3));
+    setTimeout(() => { if (gambleSpinning) sfx.gambleTick?.(); }, t);
+  }
+  // Spannungs-Toene in der Schluss-Phase (das Rad bremst an Legendären/Ultra vorbei)
+  [3700, 4250, 4700, 5000].forEach((t) => setTimeout(() => { if (gambleSpinning) sfx.gambleTension?.(); }, t));
   setTimeout(() => {
     gambleSpinning = false;
     if (rollBtn) rollBtn.disabled = gamblePot.size === 0;

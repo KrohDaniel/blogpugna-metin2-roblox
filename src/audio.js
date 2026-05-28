@@ -113,6 +113,23 @@ export const sfx = {
   uiClick() {
     pulse({ freq: 880, type: "square", duration: 0.04, decay: 0.04, gain: 0.18 });
   },
+  // Glücksrad: kurzer Klick pro vorbeiziehender Zelle
+  gambleTick() {
+    pulse({ freq: 1300, type: "square", duration: 0.018, decay: 0.02, gain: 0.14 });
+  },
+  // Glücksrad: ansteigender Spannungs-Ton (kurz vor dem Stopp)
+  gambleTension() {
+    pulse({ freq: 380, type: "sawtooth", duration: 0.3, decay: 0.22, gain: 0.32, freqEnd: 1000 });
+  },
+  // Glücksrad: freudige Gewinn-Fanfare
+  gambleWin() {
+    [659, 784, 988, 1319].forEach((f, i) => setTimeout(() => pulse({ freq: f, type: "triangle", duration: 0.14, decay: 0.12, gain: 0.5 }), i * 90));
+  },
+  // Glücksrad: grosser Jackpot
+  gambleJackpot() {
+    [523, 659, 784, 1047, 1319, 1568].forEach((f, i) => setTimeout(() => pulse({ freq: f, type: "triangle", duration: 0.16, decay: 0.14, gain: 0.55 }), i * 80));
+    setTimeout(() => { pulse({ freq: 220, type: "sawtooth", duration: 0.4, decay: 0.35, gain: 0.42, freqEnd: 880 }); noise({ duration: 0.3, freq: 1200, gain: 0.3 }); }, 220);
+  },
 };
 
 export function setSoundEnabled(on) {
