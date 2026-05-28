@@ -3,6 +3,9 @@
 Ein spielbarer Browser-Prototyp fuer ein blockiges Action-Rollenspiel mit Mobs,
 Loot, Inventar und Metin-Steinen.
 
+> **📖 Vollständige Spielanleitung & Index:** siehe [SPIELANLEITUNG.md](SPIELANLEITUNG.md)
+> — alle Klassen, Waffen, Runen, Steine, Bosse, Welten + konkrete Aufstiegs-Anleitung.
+
 ## Start
 
 Starte lokal einen kleinen Server, damit die ES-Module sauber geladen werden:
@@ -25,34 +28,24 @@ Online-Version: `https://blogpugna.web.app`
 Hinweis: Die aktuelle Username/Passwort-Loesung ist ein Prototyp ueber Firebase
 Realtime Database und nicht fuer echte Produktionsaccounts gedacht.
 
-## Steuerung
+## Steuerung (Kurzfassung)
 
-- `WASD` oder Pfeiltasten: bewegen
-- Maus: zielen
-- Linksklick oder `Leertaste`: schlagen
-- `Q`: Schwertverbesserung mit roter Waffen-Aura
-- `E`: Sichelhieb als Flaechenangriff
-- `F`: Schmied benutzen, wenn du neben ihm stehst
-- `1`: Heiltrank nutzen
-- Inventar-Slot anklicken: Trank nutzen oder Waffe ausruesten
+- `WASD` / Pfeile: bewegen · Maus: zielen · Linksklick / `Leertaste`: schlagen
+- `Q` / `E` / `R`: Skill 1 / Skill 2 / Ulti · `1`: Heiltrank · `F`: Schmied
+- `I C M P T B`: Inventar / Charakter / Quest / PvP / Talente / Codex
+- **Mobile:** Joystick + Touch-Buttons mit Auto-Aim, `⛶` Vollbild, `☰` Menü
 
-## Inhalt
+→ Details + alle Mechaniken: [SPIELANLEITUNG.md](SPIELANLEITUNG.md)
+
+## Inhalt (Überblick)
 
 - Blockiger Roblox-inspirierter Stil ohne offizielle Roblox-Assets
-- Drei Klassen mit eigenen Werten und Skills: Krieger, Schattenlaeufer, Runenmagier
-- Duo-Kombos ueber Status-Effekte wie Betaeubung, Giftmarke, Feuer-Detonation und Frost
-- **Shared World**: alle eingeloggten Spieler sehen dieselben Mobs, Steine und Loot
-- **Host-System** mit Auto-Failover: erster Spieler wird Host, bei Disconnect uebernimmt automatisch ein anderer
-- **Damage-Credit Loot**: wer den meisten Schaden macht, bekommt Loot 6s reserviert (rot/gruen umrandet)
-- Gegner mit Nahkampf-KI, Mob-Anzahl und HP skalieren mit Anzahl Spieler (1+0.35*N)
-- Metin-Steine mit mehr Leben und garantierter Waffen-Lootrolle
-- Ruestung als Drop: Lederweste / Eisenharnisch / Stahlpanzer / Drachenplatte (4 Tiers)
-- Rare/Epic-Waffen mit mehr Schaden, groesserer Reichweite und eigenen Angriffseffekten
-- Vollmondsichel als legendaerer Drop von Metin-Steinen, Minibossen und Bossen
-- Mehr Gegnerwellen, Minibosse und Bosse mit griechischen Namen
-- Schmied-NPC fuer Waffen- *und* Ruestungs-Upgrades bis +9 (Ruestungs-Upgrade staerkt das aktuelle Item)
-- Schwierigkeitsboost: Mob HP +60%, dmg +40%, schnellere Waves, traegere Heiltraenke
-- Minimap rechts oben mit Boss-/Mob-/Spieler-Markern und Host-Anzeige
-- Tod setzt Level, Stats, Gold und Inventar (inkl. Ruestungsplatz) zurueck
-- Kleine Firebase-Username-Auth und Live-Spieler auf gemeinsamer Map
-- XP, Level, Gold, Inventar und Quest-Fortschritt
+- **5 Klassen** mit eigenen Skills, Resourcen & Combos: Krieger, Schattenläufer, Runenmagier, Druidin, Lyra (Verführerin)
+- **Waffen-System** mit Klassen-Affinität (passt = 100%, sonst 75%), 4-Stufen-Leitern, Signatur-Waffen mit aktivem Effekt
+- **Runen-System**: Steine/Bosse droppen Runen (4 Wertigkeiten × 6 Typen), max 3 Sockel pro Waffe, **Runen-Wörter** als Kombi-Boni
+- **5 Bosse** in 5 Welten, je 3 Phasen + Klassen-Spotlight, droppen **Pets** (mit Evolution)
+- **Weltboss-Event** mit geteilter HP-Leiste für alle Spieler
+- **Shared World** + Host-Failover + Damage-Credit-Loot
+- Schmied (Verstärken bis +9), NPCs (Händler/Trainer/Kurier), Talent-Bäume, Codex/Bestiarium
+- Mobile-optimiert: Touch-Controls, Auto-Aim, Cooldown-Ringe, responsive Menüs
+- Tod: -1 Level, Inventar bleibt · Firebase-Auth + Cloud-Charakter-Sync (cross-device)
