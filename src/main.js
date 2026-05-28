@@ -3296,12 +3296,36 @@ function swing() {
   const arcY = player.y + Math.sin(angle) * reach;
   let hit = false;
 
+  const sig = weapon.signature;
+  let firstHitMob = null;
   for (const mob of [...mobs]) {
     if (Math.hypot(mob.x - arcX, mob.y - arcY) < mob.r + 52 || dist(player, mob) < mob.r + reach - 28) {
       const { dmg, crit } = applyCritAndLifesteal(attackPower());
       damageMob(mob, dmg, crit ? { tag: "combo" } : {});
       if (crit) floatText(mob.x, mob.y - 50, "CRIT!", "#ff9540");
+      if (!firstHitMob) firstHitMob = mob;
+      // Signatur: Schattenbiss — Crit teleportiert hinter das Ziel
+      if (sig === "shadowbite" && crit && mobs.includes(mob)) {
+        player.x = clamp(mob.x + Math.cos(angle) * (mob.r + 30), player.r, world.w - player.r);
+        player.y = clamp(mob.y + Math.sin(angle) * (mob.r + 30), player.r, world.h - player.r);
+        anim.spawnDustPuff(particles, player.x, player.y, "#6f63ff", 14);
+      }
       hit = true;
+    }
+  }
+  // Signatur: Erdspalter — jeder 3. Schlag = Schockwelle
+  if (sig === "earthsplitter") {
+    player.sigHitCount = (player.sigHitCount || 0) + 1;
+    if (player.sigHitCount % 3 === 0) {
+      anim.spawnRoar(arcX, arcY, "#f59e0b");
+      cameraShake = Math.max(cameraShake, 0.3);
+      for (const mob of [...mobs]) {
+        if (Math.hypot(mob.x - arcX, mob.y - arcY) < 140) {
+          damageMob(mob, Math.round(attackPower() * 1.2), { tag: "combo" });
+          applyStatus(mob, "stunned", 0.8);
+        }
+      }
+      floatText(arcX, arcY - 40, "SCHOCKWELLE!", "#f59e0b", { big: true });
     }
   }
   for (const stone of [...stones]) {
@@ -3361,11 +3385,11 @@ function swing() {
   }
 }
 
-function fireProjectile(weapon, classDef, angle) {
+function fireProjectile(weapon, classDef, angle, isChain = false) {
   const proj = weapon.projectile || { speed: 480, color: weapon.color || "#9ee7ff", glow: weapon.glow || "rgba(85,215,255,0.4)" };
   const speed = proj.speed || 480;
   const range = weapon.reach || 360;
-  const dmg = Math.round(attackPower() * 0.85);
+  const dmg = Math.round(attackPower() * 0.85 * (isChain ? 0.6 : 1));
   projectiles.push({
     x: player.x + Math.cos(angle) * 28,
     y: player.y - 6 + Math.sin(angle) * 28,
@@ -3381,6 +3405,14 @@ function fireProjectile(weapon, classDef, angle) {
     hits: new Set(),
     life: 1.6,
   });
+  // Signatur: Sturmrute/Sturmzepter — Auto-Attack ketten zu 2. Gegner
+  if (!isChain && (weapon.signature === "tempest") ) {
+    const second = mobs.filter((m) => !m.passive || m.aggroed)
+      .map((m) => ({ m, a: Math.atan2(m.y - player.y, m.x - player.x) }))
+      .filter((o) => Math.abs(((o.a - angle + Math.PI * 3) % (Math.PI * 2)) - Math.PI) > 0.35)
+      .sort((p, q) => Math.hypot(p.m.x - player.x, p.m.y - player.y) - Math.hypot(q.m.x - player.x, q.m.y - player.y))[0];
+    if (second) fireProjectile(weapon, classDef, second.a, true);
+  }
   // Cast partikel (kein Bildschirm-Flash bei Auto-Attack)
   for (let i = 0; i < 6; i += 1) {
     particles.push({
@@ -4548,6 +4580,17 @@ function rootSnare() {
     const dist = 60 + i * 60;
     anim.spawnRootsAt(player.x + Math.cos(angle) * dist, player.y + Math.sin(angle) * dist, 35, 1.2);
   }
+  // Signatur Weltenwurzel: Wurzeln breiten sich auf ALLE Gegner in 260px aus
+  if (equippedSignature() === "worldtree") {
+    for (const mob of [...mobs]) {
+      if (statusTime(mob, "stunned") > 0) continue;
+      if (Math.hypot(mob.x - player.x, mob.y - player.y) > 260) continue;
+      applyStatus(mob, "stunned", dur * 0.7);
+      anim.spawnRootsAt(mob.x, mob.y, 40, dur * 0.7);
+      rooted += 1;
+    }
+    floatText(player.x, player.y - 60, "WELTENWURZEL!", "#84cc16", { big: true });
+  }
   showToast(`${rooted} Gegner verwurzelt.`);
 }
 
@@ -5150,6 +5193,22 @@ function handleBossDefeat(mob, loot = true) {
 function killMob(mob) {
   if (!mob || mob._dead) return;
   mob._dead = true;
+  // Signatur Herzbrecher: charmter/confuster Mob stirbt → Charme springt zum naechsten
+  if (equippedSignature() === "heartbreaker" && (statusTime(mob, "charmed") > 0 || statusTime(mob, "confused") > 0)) {
+    let best = null, bd = 300;
+    for (const o of mobs) {
+      if (o === mob || o.bossDef) continue;
+      const d = Math.hypot(o.x - mob.x, o.y - mob.y);
+      if (d < bd) { bd = d; best = o; }
+    }
+    if (best) {
+      applyStatus(best, "confused", 4);
+      best.confusedBy = authUser || "lyra";
+      anim.applyCharmAura(best);
+      anim.spawnHearts(particles, best.x, best.y, 8, "#f5d042");
+      floatText(best.x, best.y - 40, "💔 Charme springt!", "#f5d042");
+    }
+  }
   const index = mobs.indexOf(mob);
   if (index >= 0) mobs.splice(index, 1);
   // Sterbe-Animation
@@ -5380,6 +5439,7 @@ function bossWeaponDrop() {
 
 function gainXp(amount) {
   player.xp += amount;
+  gainPetXp(Math.max(1, Math.round(amount * 0.5))); // Pet bekommt halbe XP
   let levelsGained = 0;
   while (player.xp >= player.nextXp) {
     player.xp -= player.nextXp;
@@ -6739,6 +6799,11 @@ function equippedRuneStats() {
   return out;
 }
 
+function equippedSignature() {
+  const w = currentWeapon();
+  return w ? w.signature || null : null;
+}
+
 function totalCritChance() {
   let crit = 0;
   for (const entry of player.inventory || []) {
@@ -7466,9 +7531,57 @@ function togglePet() {
   saveCurrentCharacter();
 }
 
+// === Pet-Evolution ===
+const PET_MAX_LEVEL = 5;
+function petLevel() {
+  if (!player.activePet || !player.pets?.[player.activePet]) return 1;
+  return player.pets[player.activePet].level || 1;
+}
+function petStageName(def, lvl) {
+  const stages = ["", "", " (gestaerkt)", " (Elite)", " (Meister)", " ★ Titan"];
+  return (def?.name || "Pet") + (stages[lvl] || "");
+}
+function gainPetXp(amount) {
+  if (!player.activePet) return;
+  const pet = player.pets?.[player.activePet];
+  if (!pet) return;
+  pet.level = pet.level || 1;
+  if (pet.level >= PET_MAX_LEVEL) return;
+  pet.xp = (pet.xp || 0) + amount;
+  const need = pet.level * 120;
+  if (pet.xp >= need) {
+    pet.xp -= need;
+    pet.level += 1;
+    const def = getActivePetDef();
+    showToast(`${def?.name || "Pet"} steigt auf Stufe ${pet.level}!`);
+    anim.spawnHearts?.(particles, petRuntime?.x || player.x, petRuntime?.y || player.y, 8, "#fde047");
+    if (pet.level === PET_MAX_LEVEL) showToast(`${def?.name} hat die Titan-Form erreicht — Spezial-Faehigkeit freigeschaltet!`);
+    saveCurrentCharacter();
+  }
+}
+
 function updatePet(dt) {
   const def = getActivePetDef();
   if (!def || !petRuntime) return;
+  const lvl = petLevel();
+  const dmgMult = 1 + (lvl - 1) * 0.30; // +30% Schaden pro Stufe
+  // Stufe-5 Pet-Skill: alle 8s ein AoE-Burst um das Pet
+  petRuntime.skillCd = Math.max(0, (petRuntime.skillCd || 0) - dt);
+  if (lvl >= PET_MAX_LEVEL && petRuntime.skillCd <= 0) {
+    let anyHit = false;
+    for (const mob of [...mobs]) {
+      if (Math.hypot(mob.x - petRuntime.x, mob.y - petRuntime.y) < 130) {
+        damageMob(mob, Math.round(attackPower() * 0.8), { tag: "combo" });
+        anyHit = true;
+      }
+    }
+    if (anyHit) {
+      anim.spawnRoar?.(petRuntime.x, petRuntime.y, def.color);
+      petRuntime.skillCd = 8;
+    } else {
+      petRuntime.skillCd = 1;
+    }
+  }
   // Folgen mit Lag
   const targetX = player.x - 60;
   const targetY = player.y + 40;
@@ -7489,7 +7602,7 @@ function updatePet(dt) {
       if (md < bestDist) { bestDist = md; bestMob = mob; }
     }
     if (bestMob) {
-      const dmg = Math.max(2, Math.round(attackPower() * def.damage));
+      const dmg = Math.max(2, Math.round(attackPower() * def.damage * dmgMult));
       // Projektil vom Pet
       const a = Math.atan2(bestMob.y - petRuntime.y, bestMob.x - petRuntime.x);
       projectiles.push({
@@ -7514,20 +7627,39 @@ function updatePet(dt) {
 function drawPet() {
   const def = getActivePetDef();
   if (!def || !petRuntime) return;
+  const lvl = petLevel();
+  const scale = 1 + (lvl - 1) * 0.18; // groesser pro Stufe
   const bob = Math.sin(petRuntime.bobPhase) * 4;
   ctx.save();
   ctx.translate(petRuntime.x, petRuntime.y + bob);
-  // Aura
+  ctx.scale(scale, scale);
+  // Aura (pulsiert staerker bei hoher Stufe)
   ctx.fillStyle = def.glow;
   ctx.beginPath();
-  ctx.arc(0, 0, 18, 0, Math.PI * 2);
+  ctx.arc(0, 0, 18 + (lvl >= PET_MAX_LEVEL ? Math.sin(performance.now() / 200) * 4 : 0), 0, Math.PI * 2);
   ctx.fill();
   // Body
   ctx.fillStyle = def.color;
   ctx.fillRect(-8, -8, 16, 16);
   ctx.fillStyle = "#fff";
   ctx.fillRect(-3, -3, 6, 6);
+  // Titan-Krone bei Max-Stufe
+  if (lvl >= PET_MAX_LEVEL) {
+    ctx.fillStyle = "#fde047";
+    ctx.fillRect(-8, -14, 16, 3);
+    ctx.fillRect(-6, -18, 3, 4);
+    ctx.fillRect(3, -18, 3, 4);
+  }
   ctx.restore();
+  // Stufen-Anzeige
+  if (lvl > 1) {
+    ctx.save();
+    ctx.font = "bold 9px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillStyle = lvl >= PET_MAX_LEVEL ? "#fde047" : "#e5e7eb";
+    ctx.fillText(`Lv${lvl}`, petRuntime.x, petRuntime.y - 18 * scale);
+    ctx.restore();
+  }
 }
 
 function drawNpcs() {
