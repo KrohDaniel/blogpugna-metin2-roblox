@@ -71,6 +71,7 @@
               "weapon": { ".validate": "newData.isString() && newData.val().length <= 32" },
               "weaponUpgrade": { ".validate": "newData.isNumber()" },
               "armorLevel": { ".validate": "newData.isNumber()" },
+              "act": { ".validate": "newData.isString() && newData.val().length <= 48" },
               "updatedAt": { ".validate": "newData.isNumber()" },
               "$other": {
                 ".validate": false

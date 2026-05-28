@@ -2581,7 +2581,25 @@ async function connectMultiplayer() {
   unsubscribePlayers = api.onValue(playersRef, (snapshot) => {
     const value = snapshot.val() || {};
     delete value[authUser];
-    remotePlayers = value;
+    // Merge statt Ersetzen — bewahrt clientseitigen Animations-State (_walk, _face, ...)
+    for (const [name, data] of Object.entries(value)) {
+      const existing = remotePlayers[name];
+      if (existing) {
+        // Action erkennen (neue act-Zeichenkette) → Effekt abspielen
+        if (data.act && data.act !== existing._lastAct) {
+          handleRemoteAction(existing, data.act);
+          existing._lastAct = data.act;
+        }
+        Object.assign(existing, data);
+      } else {
+        data._lastAct = data.act || null;
+        remotePlayers[name] = data;
+      }
+    }
+    // Entfernte Spieler rauswerfen
+    for (const name of Object.keys(remotePlayers)) {
+      if (!value[name]) delete remotePlayers[name];
+    }
   });
   multiplayerReady = true;
   showToast(`${authUser} ist verbunden. Freunde sehen dich jetzt auf der Map.`);
@@ -2967,8 +2985,16 @@ async function syncPresence(force = false) {
     weapon: weapon.id,
     weaponUpgrade: equippedWeaponItem()?.upgrade || 0,
     armorLevel: player.armorLevel,
+    act: player._lastAction || "",
     updatedAt: Date.now(),
   });
+}
+
+// Lokale Aktion fuer andere Spieler broadcasten (kompakte Zeichenkette)
+function broadcastAction(kind, abilityId) {
+  const ang = (typeof aimAngle === "function") ? aimAngle() : 0;
+  player._lastAction = `${kind}|${abilityId || ""}|${ang.toFixed(2)}|${Date.now()}`;
+  syncPresence(true); // sofort senden statt auf naechsten Tick warten
 }
 
 // === SHARED WORLD ===
@@ -3445,6 +3471,7 @@ function swing() {
   player.attackCooldown = weapon.cooldown || 0.42;
   // Aim ueber aimAngle() — beruecksichtigt Joystick / Auto-Aim / Manual-Tap
   const angle = aimAngle();
+  if (multiplayerReady) broadcastAction("swing");
 
   // Ranged path (Magier / staff) — aber Bär-Form ist immer Melee
   const isRanged = (weapon.style === "staff" || classDef.weaponStyle === "staff") && !(player.bearForm > 0);
@@ -4227,6 +4254,7 @@ function useAbility(abilityId) {
   };
   handlers[abilityId]?.();
   setAbilityCooldown(abilityId);
+  if (multiplayerReady) broadcastAction("skill", abilityId);
   addCombo(ability.ultimate ? 25 : 12);
   skillFlashes.push({ color: ability.color || "#f4c95d", life: 0.18, maxLife: 0.18 });
   if (ability.ultimate) sfx.ulti(); else sfx.skill();
@@ -8269,6 +8297,39 @@ function drawPlayer() {
   }
 }
 
+// Aktion eines anderen Spielers visuell abspielen (an dessen Position)
+function handleRemoteAction(remote, actStr) {
+  const parts = (actStr || "").split("|");
+  const kind = parts[0];
+  const abilityId = parts[1];
+  const angle = parseFloat(parts[2]) || 0;
+  const rx = remote.x, ry = remote.y;
+  if (kind === "swing") {
+    remote._swing = { t: 0.4, max: 0.4, angle };
+    // kleiner Funken-Bogen
+    for (let i = 0; i < 6; i += 1) {
+      const a = angle + (i - 3) * 0.12;
+      particles.push({ x: rx + Math.cos(angle) * 40, y: ry + Math.sin(angle) * 40, vx: Math.cos(a) * 80, vy: Math.sin(a) * 80, life: 0.25, color: "#d9dee5", size: 3 });
+    }
+  } else if (kind === "skill" && abilityId) {
+    const ab = getAbilityDef(abilityId);
+    const color = ab?.color || "#fde047";
+    // Skill-Burst in Ability-Farbe + kleiner Ring
+    for (let i = 0; i < 24; i += 1) {
+      const a = Math.random() * Math.PI * 2;
+      particles.push({ x: rx, y: ry, vx: Math.cos(a) * (120 + Math.random() * 120), vy: Math.sin(a) * (120 + Math.random() * 120), life: 0.5, color, size: 4 });
+    }
+    crescentWaves.push({ x: rx, y: ry, angle: 0, range: 90, radius: 90, life: 0.4, maxLife: 0.4, color, radial: true });
+    // Ranged-Skills: kleines Projektil-Visual in Blickrichtung (rein kosmetisch)
+    if (["fireOrb", "frostCircle", "meteor", "blowKiss"].includes(abilityId)) {
+      for (let i = 0; i < 8; i += 1) {
+        particles.push({ x: rx + Math.cos(angle) * (20 + i * 18), y: ry + Math.sin(angle) * (20 + i * 18), vx: Math.cos(angle) * 60, vy: Math.sin(angle) * 60, life: 0.4, color, size: 4 });
+      }
+    }
+    floatText(rx, ry - 90, ab?.name || "Skill", color);
+  }
+}
+
 function drawRemotePlayers() {
   const now = Date.now();
   for (const remote of Object.values(remotePlayers)) {
@@ -8307,8 +8368,19 @@ function drawRemotePlayers() {
 
 function drawRemoteWeapon(remote) {
   const def = itemDefs[remote.weapon] || itemDefs.rust_sword;
+  // Swing-Animation abklingen lassen
+  let swingRot = 0, swingOff = 0;
+  if (remote._swing && remote._swing.t > 0) {
+    remote._swing.t -= 0.016;
+    const pct = 1 - remote._swing.t / remote._swing.max;
+    if (pct < 0.45) { const p = pct / 0.45; swingRot = -0.6 + 1.4 * p; swingOff = -4 + 16 * p; }
+    else { const p = (pct - 0.45) / 0.55; swingRot = 0.8 * (1 - p); swingOff = 12 * (1 - p); }
+  }
+  const baseAngle = remote._swing ? remote._swing.angle : (remote._face || 0);
   ctx.save();
   ctx.translate(remote.x, remote.y - 12);
+  ctx.rotate(baseAngle + swingRot);
+  ctx.translate(swingOff, 0);
   ctx.fillStyle = def.glow || "rgba(217,222,229,0.18)";
   ctx.fillRect(14, -16, 46, 32);
   ctx.fillStyle = def.color || "#d9dee5";
