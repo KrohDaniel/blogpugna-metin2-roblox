@@ -632,7 +632,8 @@ function applyCritAndLifesteal(amount) {
   }
   const ls = totalLifesteal();
   if (ls > 0) {
-    const heal = Math.max(1, Math.round(dmg * ls));
+    // Heilung = % vom Schaden, aber pro Treffer auf 6% maxHP gedeckelt (kein Voll-Heal durch Mega-Krit)
+    const heal = Math.min(Math.max(1, Math.round(dmg * ls)), Math.round(player.maxHp * 0.06));
     player.hp = Math.min(player.maxHp, player.hp + heal);
   }
   return { dmg, crit };
@@ -8575,14 +8576,15 @@ function totalCritChance() {
 
 function totalLifesteal() {
   let ls = 0;
-  for (const entry of player.inventory || []) {
-    if (entry.affixes?.lifesteal) ls += entry.affixes.lifesteal;
+  // Nur AUSGERÜSTETE Teile zählen — vorher summierte das ganze Inventar (Bug: gehortete Items zählten mit)
+  for (const item of [equippedWeaponItem(), equippedArmorItem(), equippedBootsItem(), equippedHatItem()]) {
+    if (item?.affixes?.lifesteal) ls += item.affixes.lifesteal;
   }
   ls += talentEffect("lifestealBonus");
   const rs = equippedRuneStats();
   ls += rs.lifesteal;
   if (rs.word?.effect.bonusLifesteal) ls += rs.word.effect.bonusLifesteal;
-  return Math.min(0.5, ls);
+  return Math.min(0.30, ls);
 }
 
 function totalCdr() {
