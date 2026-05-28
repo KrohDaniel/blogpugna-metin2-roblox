@@ -471,6 +471,15 @@ function svgIconFor(invItem, color) {
       <path d="M16 22 L32 22 L34 36 Q24 42 14 36 Z" fill="${c}"/>
       <circle cx="20" cy="30" r="2" fill="${shine}" opacity="0.6"/>
     `;
+  } else if (def.type === "rune") {
+    // Runenstein: facettierter Edelstein in Runen-Farbe + Tier-Glanz
+    const rim = def.runeTier === "perfekt" ? "#fde047" : def.runeTier === "strahlend" ? "#c084fc" : def.runeTier === "klar" ? "#60a5fa" : "#94a3b8";
+    body = `
+      <path d="M24 4 L40 16 L34 42 L14 42 L8 16 Z" fill="${c}" stroke="${rim}" stroke-width="2"/>
+      <path d="M24 4 L40 16 L24 22 L8 16 Z" fill="${shine}" opacity="0.35"/>
+      <path d="M24 22 L34 42 L14 42 Z" fill="${dark}" opacity="0.25"/>
+      <circle cx="24" cy="26" r="4" fill="${shine}" opacity="0.7"/>
+    `;
   } else if (def.type === "material") {
     if (invItem.id === "frost_core") {
       body = `<path d="M24 4 L34 24 L24 44 L14 24 Z" fill="${c}"/><path d="M24 12 L30 24 L24 36 L18 24 Z" fill="${shine}" opacity="0.4"/>`;
@@ -1865,8 +1874,9 @@ function renderDropList(table) {
     const def = itemDefs[entry.id];
     if (!def) return "";
     const pct = Math.round(entry.chance * 100);
+    const dlIcon = svgIconFor({ id: entry.id }, def.color) || `${def.icon || "?"}`;
     return `<li>
-      <span class="dl-icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span>
+      <span class="dl-icon" style="color:${def.color || "#fff"}">${dlIcon}</span>
       <span>${def.name}</span>
       <span class="dl-pct">${pct}%</span>
     </li>`;
@@ -3384,7 +3394,8 @@ function renderTradeOverlay() {
       const d = document.createElement("div");
       d.className = "trade-item";
       d.style.color = def?.color || "#fff";
-      d.innerHTML = `${def?.icon || "?"}<span class="tcount">${e.count > 1 ? e.count : ""}</span>`;
+      const myIcon = svgIconFor(e, def?.color) || `<span>${def?.icon || "?"}</span>`;
+      d.innerHTML = `${myIcon}<span class="tcount">${e.count > 1 ? e.count : ""}</span>`;
       d.title = "Klick: zurueck ins Inventar";
       d.addEventListener("click", () => { activeTrade.offerIdx.delete(idx); resetReadyAndSync(); });
       myEl.append(d);
@@ -3399,7 +3410,8 @@ function renderTradeOverlay() {
       const d = document.createElement("div");
       d.className = "trade-item";
       d.style.color = def?.color || "#fff";
-      d.innerHTML = `${def?.icon || "?"}<span class="tcount">${it.count > 1 ? it.count : ""}</span>`;
+      const theirIcon = svgIconFor(it, def?.color) || `<span>${def?.icon || "?"}</span>`;
+      d.innerHTML = `${theirIcon}<span class="tcount">${it.count > 1 ? it.count : ""}</span>`;
       d.title = `${def?.name || it.id}${it.upgrade ? " +" + it.upgrade : ""}`;
       theirEl.append(d);
     }
@@ -3428,7 +3440,8 @@ function renderTradeOverlay() {
       row.className = `trade-inv-row ${def.rarity || ""}${useful ? " useful" : ""}`;
       row.style.setProperty("--item-color", def.color || "#fff");
       const sub = tradeItemSubtitle(e, def, partnerClass);
-      row.innerHTML = `<span class="tir-icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span>`
+      const rowIcon = svgIconFor(e, def.color) || `${def.icon || "?"}`;
+      row.innerHTML = `<span class="tir-icon" style="color:${def.color || "#fff"}">${rowIcon}</span>`
         + `<span class="tir-text"><strong>${itemLabel(e)}</strong><small>${sub}</small></span>`
         + `${e.count > 1 ? `<span class="tir-count">x${e.count}</span>` : ""}`;
       row.addEventListener("click", () => { activeTrade.offerIdx.add(idx); resetReadyAndSync(); });
@@ -3572,7 +3585,8 @@ function renderGamble() {
       const d = document.createElement("div");
       d.className = "trade-item";
       d.style.color = def?.color || "#fff";
-      d.innerHTML = `${def?.icon || "?"}<span class="tcount">${e.count > 1 ? e.count : ""}</span>`;
+      const potIcon = svgIconFor(e, def?.color) || `<span>${def?.icon || "?"}</span>`;
+      d.innerHTML = `${potIcon}<span class="tcount">${e.count > 1 ? e.count : ""}</span>`;
       d.title = `${itemLabel(e)} — Klick: zurueck`;
       d.addEventListener("click", () => { gamblePot.delete(idx); renderGamble(); });
       potEl.append(d);
@@ -3590,7 +3604,8 @@ function renderGamble() {
       slot.type = "button";
       slot.className = `slot ${def.rarity || ""}`;
       slot.style.setProperty("--item-color", def.color || "#fff");
-      slot.innerHTML = `<span class="icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span><span class="count">${e.count}</span>`;
+      const slotIcon = svgIconFor(e, def.color) || `${def.icon || "?"}`;
+      slot.innerHTML = `<span class="icon" style="color:${def.color || "#fff"}">${slotIcon}</span><span class="count">${e.count}</span>`;
       slot.title = `${itemLabel(e)} (Wert ${itemGambleValue(e)}) — Klick: einsetzen`;
       slot.addEventListener("click", () => { gamblePot.add(idx); renderGamble(); });
       invEl.append(slot);
@@ -3661,7 +3676,8 @@ function grantGambleReward(reward) {
   if (resEl) {
     resEl.className = `gamble-result ${reward.cls}`;
     resEl.classList.remove("hidden");
-    resEl.innerHTML = reward.label;
+    const resSvg = reward.itemId ? svgIconFor({ id: reward.itemId }, itemDefs[reward.itemId]?.color) : null;
+    resEl.innerHTML = (resSvg ? `<span class="gamble-result-icon">${resSvg}</span>` : "") + `<span>${reward.label}</span>`;
   }
   sfx[reward.cls === "jackpot" ? "ulti" : reward.cls === "win" ? "levelUp" : "hit"]?.();
   if (reward.cls === "jackpot") { cameraShake = 0.5; skillFlashes.push({ color: "#ec4899", life: 0.6, maxLife: 0.6 }); }
@@ -3695,7 +3711,8 @@ function playGambleReel(reward, onDone) {
     const cell = document.createElement("div");
     if (i === winIndex) {
       cell.className = `gamble-reel-cell ${reward.cls === "jackpot" ? "legendary" : reward.cls === "ultra" ? "ultra" : reward.tierClass || "rare"}`;
-      cell.textContent = reward.icon || "🎁";
+      const winSvg = reward.itemId ? svgIconFor({ id: reward.itemId }, itemDefs[reward.itemId]?.color) : null;
+      if (winSvg) cell.innerHTML = winSvg; else cell.textContent = reward.icon || "🎁";
     } else if (teaseTiers[i]) {
       cell.className = `gamble-reel-cell ${teaseTiers[i]}`;
       cell.textContent = fancyIcons[Math.floor(Math.random() * fancyIcons.length)];
@@ -8737,8 +8754,9 @@ function renderTrader() {
       const def = itemDefs[entry.id];
       const row = document.createElement("div");
       row.className = "trader-row";
+      const buyIcon = svgIconFor({ id: entry.id }, def?.color) || `${def?.icon || "?"}`;
       row.innerHTML = `
-        <span class="tr-icon" style="color:${def?.color || "#fff"}">${def?.icon || "?"}</span>
+        <span class="tr-icon" style="color:${def?.color || "#fff"}">${buyIcon}</span>
         <span class="tr-label">${entry.label}</span>
         <span class="tr-price">${entry.price} G</span>
         <button data-buy="${entry.id}" data-price="${entry.price}">Kaufen</button>
@@ -8757,8 +8775,9 @@ function renderTrader() {
       const def = itemDefs[inv.id];
       const row = document.createElement("div");
       row.className = "trader-row";
+      const sellIcon = svgIconFor(inv, def?.color) || `${def?.icon || "?"}`;
       row.innerHTML = `
-        <span class="tr-icon" style="color:${def?.color || "#fff"}">${def?.icon || "?"}</span>
+        <span class="tr-icon" style="color:${def?.color || "#fff"}">${sellIcon}</span>
         <span class="tr-label">${def?.name || inv.id} ×${inv.count}</span>
         <span class="tr-price">${price} G</span>
         <button data-sell="${i}">Verkaufen</button>

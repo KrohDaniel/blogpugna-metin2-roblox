@@ -3379,8 +3379,12 @@ body.is-touch:has(.class-overlay:not(.hidden)) #mobileHud {
 .gamble-actions button { flex: 1; min-height: 48px; font-weight: 800; cursor: pointer; border-radius: 8px; border: 1px solid #526173; background: rgba(30,35,50,0.85); color: #fff; }
 .gamble-actions button.primary { background: linear-gradient(135deg, #a855f7, #7c3aed); border: none; }
 .gamble-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
-.gamble-result { margin-top: 12px; padding: 14px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; }
+.gamble-result { margin-top: 12px; padding: 14px; border-radius: 10px; text-align: center; font-weight: 800; font-size: 16px; display: flex; align-items: center; justify-content: center; gap: 10px; }
 .gamble-result.hidden { display: none; }
+.gamble-result-icon { display: inline-flex; }
+.gamble-result-icon .item-svg { width: 32px; height: 32px; }
+.gamble-reel-cell .item-svg { width: 46px; height: 46px; }
+.trade-item .item-svg, .tir-icon .item-svg, .tr-icon .item-svg, .dl-icon .item-svg { width: 26px; height: 26px; vertical-align: middle; }
 .gamble-result.win { background: rgba(245,208,66,0.15); border: 1px solid #fbbf24; color: #fde047; }
 .gamble-result.meh { background: rgba(148,163,184,0.12); border: 1px solid #64748b; color: #cbd5e1; }
 .gamble-result.jackpot { background: rgba(236,72,153,0.18); border: 2px solid #ec4899; color: #f9a8d4; animation: tradePulse 0.8s ease 3; }
