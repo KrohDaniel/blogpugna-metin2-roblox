@@ -3410,20 +3410,70 @@ function renderTradeOverlay() {
   const inv = document.getElementById("tradeInventory");
   if (inv) {
     inv.innerHTML = "";
-    player.inventory.forEach((e, idx) => {
-      if (!e || activeTrade.offerIdx.has(idx)) return;
+    const partnerClass = remotePlayers[activeTrade.partner]?.classId || null;
+    // Inventar nach Nuetzlichkeit fuer den Partner sortieren (nuetzlich oben, Muell unten)
+    const entries = player.inventory
+      .map((e, idx) => ({ e, idx }))
+      .filter(({ e, idx }) => e && !activeTrade.offerIdx.has(idx) && itemDefs[e.id])
+      .sort((a, b) => partnerUsefulness(b.e, partnerClass) - partnerUsefulness(a.e, partnerClass));
+    for (const { e, idx } of entries) {
       const def = itemDefs[e.id];
-      if (!def) return;
-      const slot = document.createElement("button");
-      slot.type = "button";
-      slot.className = `slot ${def.rarity || ""}`;
-      slot.style.setProperty("--item-color", def.color || "#fff");
-      slot.innerHTML = `<span class="icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span><span class="count">${e.count}</span>`;
-      slot.title = `${itemLabel(e)} — Klick: anbieten`;
-      slot.addEventListener("click", () => { activeTrade.offerIdx.add(idx); resetReadyAndSync(); });
-      inv.append(slot);
-    });
+      const useful = partnerUsefulness(e, partnerClass) >= 100;
+      const row = document.createElement("button");
+      row.type = "button";
+      row.className = `trade-inv-row ${def.rarity || ""}${useful ? " useful" : ""}`;
+      row.style.setProperty("--item-color", def.color || "#fff");
+      const sub = tradeItemSubtitle(e, def, partnerClass);
+      row.innerHTML = `<span class="tir-icon" style="color:${def.color || "#fff"}">${def.icon || "?"}</span>`
+        + `<span class="tir-text"><strong>${itemLabel(e)}</strong><small>${sub}</small></span>`
+        + `${e.count > 1 ? `<span class="tir-count">x${e.count}</span>` : ""}`;
+      row.addEventListener("click", () => { activeTrade.offerIdx.add(idx); resetReadyAndSync(); });
+      inv.append(row);
+    }
   }
+}
+
+// Nuetzlichkeits-Score eines Items fuer die Partner-Klasse (hoeher = oben)
+function partnerUsefulness(entry, partnerClass) {
+  const def = itemDefs[entry.id];
+  if (!def) return 0;
+  const rarityW = { common: 0, rare: 20, epic: 45, legendary: 90 }[def.rarity] || 0;
+  let score = rarityW;
+  if (def.type === "weapon") {
+    score += 200;
+    if (partnerClass && weaponClassMatch(def, partnerClass) === 1) score += 400; // passende Waffe ganz oben
+    score += (def.attack || 0);
+  } else if (def.type === "armor") {
+    score += 150;
+    if (partnerClass && armorClassMatch(def, partnerClass) >= 1) score += 300;
+    score += (def.defense || 0);
+  } else if (def.type === "rune") {
+    const r = parseRune(entry.id);
+    score += 120 + (r ? runeValue(r.type, r.tier) * 4 : 0);
+  } else if (def.type === "material") {
+    score += def.rarity === "legendary" ? 110 : 40;
+  } else if (def.type === "potion") {
+    score += 15;
+  }
+  return score;
+}
+
+// Kurzbeschreibung was das Item ist (fuer die Trade-Liste)
+function tradeItemSubtitle(entry, def, partnerClass) {
+  if (def.type === "weapon") {
+    const atk = (def.attack || 0) + (entry.upgrade || 0) * 3;
+    const fit = partnerClass && weaponClassMatch(def, partnerClass) === 1 ? " ✓ ideal" : "";
+    return `Waffe · ${atk} ATK${fit}`;
+  }
+  if (def.type === "armor") {
+    const d = (def.defense || 0) + (entry.upgrade || 0) * 4;
+    const fit = partnerClass && armorClassMatch(def, partnerClass) >= 1 ? " ✓ ideal" : "";
+    return `Rüstung · ${d} DEF${fit}`;
+  }
+  if (def.type === "rune") { const r = parseRune(entry.id); return r ? `Rune · ${r.def.desc}` : "Rune"; }
+  if (def.type === "material") return "Material";
+  if (def.type === "potion") return `Trank · +${def.heal} HP`;
+  return def.type;
 }
 
 function resetReadyAndSync() {
