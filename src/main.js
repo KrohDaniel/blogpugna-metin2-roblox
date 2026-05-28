@@ -6321,10 +6321,14 @@ function update(dt) {
     if (mob.attackTelegraph > 0) mob.attackTelegraph = Math.max(0, mob.attackTelegraph - dt);
     if (pd < player.r + mob.r && player.invuln <= 0) {
       const def = totalDefense();
-      const mitigatedDamage = Math.max(3, Math.ceil(mob.damage * 0.65 + mob.damage * 0.35 - def));
+      // Bosse machen bei reiner Beruehrung deutlich weniger Schaden (ihr Threat
+      // sind die telegraphierten Faehigkeiten, nicht das Anrempeln) — sonst ist
+      // Nahkampf gegen Bosse besonders auf Mobile fast unmoeglich.
+      const contactMult = mob.bossDef ? 0.35 : 1;
+      const mitigatedDamage = Math.max(3, Math.ceil((mob.damage * 0.65 + mob.damage * 0.35) * contactMult - def));
       player.hp -= mitigatedDamage;
       gainRage(8); // Krieger laedt Rage durch eingesteckte Treffer
-      player.invuln = 0.5;
+      player.invuln = mob.bossDef ? 0.8 : 0.5; // laengeres i-frame nach Boss-Beruehrung
       // Player flash bei Treffer
       player.hitFlash = 0.2;
       floatText(player.x, player.y - 36, `-${mitigatedDamage}`, "#ff5d62");
