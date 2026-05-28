@@ -3029,7 +3029,10 @@ function hostKillMob(mob) {
   dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"), owner);
   pushGrant(owner || authUser, { xp: mob.xp, kill: "mob" });
   burst(mob.x, mob.y, mob.color || "#ff6b6b", mob.rank === "boss" ? 70 : mob.rank === "miniboss" ? 42 : 24);
-  if (mob.rank === "boss") showToast(`${mob.name} besiegt: Boss-Loot liegt am Boden.`);
+  // Boss: Pet-Unlock + Cinematic auch im Multiplayer (loot=false, dropLoot lief schon oben)
+  if (mob.bossDef) {
+    handleBossDefeat(mob, false);
+  } else if (mob.rank === "boss") showToast(`${mob.name} besiegt: Boss-Loot liegt am Boden.`);
   else if (mob.rank === "miniboss") showToast(`${mob.name} besiegt: starker Loot liegt am Boden.`);
   setTimeout(() => {
     const point = randomPointAwayFromPlayer(680);
@@ -5086,6 +5089,30 @@ function damageMob(mob, amount, options = {}) {
 // Zentralisiert die Mob-Sterbe-Logik. Wird aus damageMob() UND aus DoT-Ticks
 // (tickStatuses) UND confusion-Attacks gerufen, damit Mobs auch durch Gift,
 // Brand und Charm-vs-Mob-Schaden korrekt sterben (vorher Bug: hp blieb auf 0).
+// Boss-Defeat: Pet-Unlock + Cinematic + Drop. Wird aus killMob (single) UND
+// hostKillMob (multiplayer) gerufen, damit Pets in JEDEM Modus freigeschaltet
+// werden. Nur ausfuehren wenn der lokale Spieler am Boss mitgewirkt hat.
+function handleBossDefeat(mob, loot = true) {
+  if (loot) handleWorldBossDrop(mob);
+  cameraShake = 0.7;
+  skillFlashes.push({ color: "#ffe0a0", life: 0.5, maxLife: 0.5 });
+  triggerBossDefeatCinematic(mob);
+  const petDef = mob.bossDef.pet;
+  // Pet nur freischalten wenn lokaler Spieler Schaden gemacht hat (oder solo)
+  const contributed = !mob.dmgBy || !authUser || (mob.dmgBy[authUser] || 0) > 0 || Object.keys(mob.dmgBy).length === 0;
+  if (petDef && contributed) {
+    player.pets = player.pets || {};
+    if (!player.pets[mob.bossDef.id]) {
+      player.pets[mob.bossDef.id] = { bossId: mob.bossDef.id, unlockedAt: Date.now() };
+      showToast(`${petDef.name} folgt dir jetzt! Schalte ihn im Charakter-Menü an/aus.`);
+    }
+    player.activePet = mob.bossDef.id;
+    initPetRuntime();
+    saveCurrentCharacter();
+  }
+  if (mob.bossDef.defeatToast) showToast(mob.bossDef.defeatToast);
+}
+
 function killMob(mob) {
   if (!mob || mob._dead) return;
   mob._dead = true;
@@ -5109,28 +5136,13 @@ function killMob(mob) {
   trackCourierKill();
   gainXp(mob.xp);
   if (mob.bossDef) {
-    handleWorldBossDrop(mob);
-    cameraShake = 0.7;
-    skillFlashes.push({ color: "#ffe0a0", life: 0.5, maxLife: 0.5 });
-    triggerBossDefeatCinematic(mob);
-    const petDef = mob.bossDef.pet;
-    if (petDef) {
-      player.pets = player.pets || {};
-      if (!player.pets[mob.bossDef.id]) {
-        player.pets[mob.bossDef.id] = { bossId: mob.bossDef.id, unlockedAt: Date.now() };
-        showToast(`${petDef.name} folgt dir jetzt! Schalte ihn im Charakter-Menü an/aus.`);
-      }
-      player.activePet = mob.bossDef.id;
-      initPetRuntime();
-      saveCurrentCharacter();
-    }
+    handleBossDefeat(mob, true);
   } else {
     dropLoot(mob.x, mob.y, mob.rank || (mob.elite ? "elite" : "mob"));
   }
   burst(mob.x, mob.y, mob.color || (mob.elite ? "#c084fc" : "#ff6b6b"), mob.rank === "boss" ? 90 : mob.rank === "miniboss" ? 42 : 24);
-  if (mob.bossDef) showToast(mob.bossDef.defeatToast || `${mob.name} besiegt.`);
-  else if (mob.rank === "boss") showToast(`${mob.name} besiegt: Boss-Loot liegt am Boden.`);
-  else if (mob.rank === "miniboss") showToast(`${mob.name} besiegt: starker Loot liegt am Boden.`);
+  if (!mob.bossDef && mob.rank === "boss") showToast(`${mob.name} besiegt: Boss-Loot liegt am Boden.`);
+  else if (!mob.bossDef && mob.rank === "miniboss") showToast(`${mob.name} besiegt: starker Loot liegt am Boden.`);
   setTimeout(() => {
     const point = randomPointAwayFromPlayer(680);
     spawnMob(point.x, point.y, Math.random() < 0.24 ? "elite" : "mob");
