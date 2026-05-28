@@ -3113,6 +3113,63 @@ body.fullscreen-active .game-area { height: 100vh !important; }
 body.fullscreen-active .touch-menu-btn { top: 8px; }
 body.fullscreen-active .touch-fullscreen { top: 8px; }
 
+/* ===== Touch-Controls verstecken solange ein Startup-Overlay offen ist ===== */
+/* (Auth, Charakter-Wahl, Charakter-Erstellen, Klassen-Wahl blockieren das Spiel) */
+body.is-touch:has(.auth-overlay:not(.hidden)) #touchControls,
+body.is-touch:has(.auth-overlay:not(.hidden)) #mobileHud,
+body.is-touch:has(.char-select-overlay:not(.hidden)) #touchControls,
+body.is-touch:has(.char-select-overlay:not(.hidden)) #mobileHud,
+body.is-touch:has(.char-create-overlay:not(.hidden)) #touchControls,
+body.is-touch:has(.char-create-overlay:not(.hidden)) #mobileHud,
+body.is-touch:has(.class-overlay:not(.hidden)) #touchControls,
+body.is-touch:has(.class-overlay:not(.hidden)) #mobileHud {
+  display: none !important;
+}
+
+/* ===== Startup-Overlays mobil: scrollbar + Touch-tauglich ===== */
+@media (pointer: coarse), (max-width: 820px) {
+  .auth-overlay,
+  .char-select-overlay,
+  .char-create-overlay,
+  .class-overlay {
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding: 16px 12px !important;
+    align-items: flex-start !important;
+    z-index: 200 !important; /* ueber Touch-Controls (50) */
+  }
+
+  /* Klassen-Wahl: alles untereinander, scrollbar, grosse Tap-Targets */
+  .class-stage {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    gap: 16px !important;
+  }
+  .class-copy h1 { font-size: 34px !important; line-height: 1; max-width: none; }
+  .class-copy p { font-size: 13px; }
+  .class-choices {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 10px !important;
+  }
+  .class-card {
+    min-height: 0 !important;
+    padding: 12px !important;
+  }
+  .class-confirm {
+    width: 100% !important;
+    min-height: 54px !important;
+    font-size: 17px !important;
+    position: sticky;
+    bottom: 8px;
+  }
+
+  /* Charakter-Listen: 1 Spalte, grosse Buttons */
+  .char-list { grid-template-columns: 1fr !important; }
+  .char-select-actions button,
+  .char-create-actions button { min-height: 50px; font-size: 16px; }
+  .char-create-card, .auth-card { width: 100% !important; max-width: 420px; }
+}
+
 /* Portrait warning */
 @media (orientation: portrait) and (max-width: 820px) {
   body.is-touch::before {
