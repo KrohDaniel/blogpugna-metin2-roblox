@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=gambler" />
+    <link rel="stylesheet" href="styles.css?v=gambler-wheel" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -548,6 +548,10 @@
               <button id="gambleRoll" type="button" class="primary" disabled>🎲 Drehen!</button>
               <button id="gambleClear" type="button">Leeren</button>
             </div>
+            <div id="gambleReel" class="gamble-reel hidden">
+              <div id="gambleReelStrip" class="gamble-reel-strip"></div>
+              <div class="gamble-reel-marker"></div>
+            </div>
             <div id="gambleResult" class="gamble-result hidden"></div>
           </section>
           <section class="gamble-inv">
@@ -558,7 +562,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=gambler"></script>
-    <script type="module" src="src/main.js?v=gambler"></script>
+    <script type="module" src="firebase-config.js?v=gambler-wheel"></script>
+    <script type="module" src="src/main.js?v=gambler-wheel"></script>
   </body>
 </html>

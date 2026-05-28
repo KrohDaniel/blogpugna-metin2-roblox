@@ -3550,7 +3550,7 @@ function renderGamble() {
   const fill = document.getElementById("gambleChanceFill");
   if (fill) fill.style.width = `${Math.min(100, Math.round((val / 150) * 100))}%`;
   const tierEl = document.getElementById("gambleTier");
-  if (tierEl) tierEl.textContent = val >= 120 ? "★ Legendär möglich" : val >= 50 ? "✦ Episch" : val >= 18 ? "◆ Selten" : "— zu wenig";
+  if (tierEl) tierEl.textContent = val >= 350 ? "💎 ULTRA-RARE möglich" : val >= 120 ? "★ Legendär möglich" : val >= 40 ? "✦ Episch" : val >= 12 ? "◆ Selten" : "— zu wenig";
   const rollBtn = document.getElementById("gambleRoll");
   if (rollBtn) rollBtn.disabled = gamblePot.size === 0;
   // Pot
@@ -3588,8 +3588,20 @@ function renderGamble() {
   }
 }
 
+let gambleSpinning = false;
+
+// Tier-Bestimmung mit Caps: niedriger Wert kann hoechstens "epic", erst hoher
+// Wert schaltet legendary/ultra frei. (Balance nach Wunsch)
+function rollGambleTier(val) {
+  if (val >= 350 && Math.random() < Math.min(0.12, 0.04 + (val - 350) / 3000)) return "ultra";
+  if (val >= 120 && Math.random() < Math.min(0.38, val / 480)) return "legendary";
+  if (val >= 40 && Math.random() < Math.min(0.62, val / 120)) return "epic";
+  if (val >= 12 && Math.random() < 0.82) return "rare";
+  return "trash";
+}
+
 function rollGamble() {
-  if (gamblePot.size === 0) return;
+  if (gamblePot.size === 0 || gambleSpinning) return;
   const val = gamblePotValue();
   // Einsatz verbrauchen (hohe Indizes zuerst)
   const indices = [...gamblePot].sort((a, b) => b - a);
@@ -3601,29 +3613,74 @@ function rollGamble() {
     if (player.armorIndex > idx) player.armorIndex -= 1;
   }
   gamblePot.clear();
-  // Roll: Jackpot/Win/Meh skaliert mit Wert
-  const jackpot = Math.min(0.5, val / 320);
-  const win = Math.min(0.8, val / 110);
-  const roll = Math.random();
-  let reward, cls;
-  if (roll < jackpot && val >= 120) { reward = gambleReward("legendary"); cls = "jackpot"; }
-  else if (roll < win && val >= 50) { reward = gambleReward("epic"); cls = "win"; }
-  else if (val >= 18) { reward = gambleReward("rare"); cls = "win"; }
-  else { reward = gambleReward("trash"); cls = "meh"; }
-  // Belohnung einbuchen
+  const tier = rollGambleTier(val);
+  const reward = gambleReward(tier);
+  // Glücksrad-Animation → danach Belohnung einbuchen
+  playGambleReel(reward, () => grantGambleReward(reward));
+  renderGamble();
+  renderInventory();
+}
+
+function grantGambleReward(reward) {
   if (reward.gold) player.gold += reward.gold;
   if (reward.itemId) addInventory(reward.itemId, reward.count || 1);
   const resEl = document.getElementById("gambleResult");
   if (resEl) {
-    resEl.className = `gamble-result ${cls}`;
+    resEl.className = `gamble-result ${reward.cls}`;
+    resEl.classList.remove("hidden");
     resEl.innerHTML = reward.label;
   }
-  sfx[cls === "jackpot" ? "ulti" : cls === "win" ? "levelUp" : "hit"]?.();
-  if (cls === "jackpot") { cameraShake = 0.4; skillFlashes.push({ color: "#ec4899", life: 0.5, maxLife: 0.5 }); }
+  sfx[reward.cls === "jackpot" ? "ulti" : reward.cls === "win" ? "levelUp" : "hit"]?.();
+  if (reward.cls === "jackpot") { cameraShake = 0.5; skillFlashes.push({ color: "#ec4899", life: 0.6, maxLife: 0.6 }); }
   saveCurrentCharacter();
-  renderGamble();
   renderInventory();
   updateUi();
+}
+
+// CS:GO-artiges Glücksrad: horizontaler Streifen scrollt und stoppt auf der Belohnung
+function playGambleReel(reward, onDone) {
+  const reel = document.getElementById("gambleReel");
+  const strip = document.getElementById("gambleReelStrip");
+  document.getElementById("gambleResult")?.classList.add("hidden");
+  if (!reel || !strip) { onDone(); return; }
+  gambleSpinning = true;
+  const rollBtn = document.getElementById("gambleRoll");
+  if (rollBtn) rollBtn.disabled = true;
+  reel.classList.remove("hidden");
+  // Zufalls-Füll-Icons (gewichtet nach Raritaet fuer Optik)
+  const fillerIcons = ["🗡","🛡","🪄","💎","🔴","🔵","🟢","🟡","🟣","⚪","💃","🌿","⚔","🏆","🌹","💔"];
+  const rarities = ["common","common","rare","rare","epic","legendary"];
+  const cellCount = 44;
+  const winIndex = 38; // Gewinn-Zelle
+  strip.innerHTML = "";
+  const cellW = 82; // 76 + 6 gap
+  for (let i = 0; i < cellCount; i += 1) {
+    const cell = document.createElement("div");
+    if (i === winIndex) {
+      cell.className = `gamble-reel-cell ${reward.cls === "jackpot" ? "legendary" : reward.cls === "ultra" ? "ultra" : reward.tierClass || "rare"}`;
+      cell.textContent = reward.icon || "🎁";
+    } else {
+      cell.className = `gamble-reel-cell ${rarities[Math.floor(Math.random() * rarities.length)]}`;
+      cell.textContent = fillerIcons[Math.floor(Math.random() * fillerIcons.length)];
+    }
+    strip.append(cell);
+  }
+  // Startposition zuruecksetzen
+  strip.style.transition = "none";
+  strip.style.transform = "translateX(0)";
+  // Ziel: Gewinn-Zelle unter den Marker (Mitte) zentrieren
+  const reelW = reel.clientWidth || 360;
+  const target = -(winIndex * cellW + cellW / 2 - reelW / 2) - (Math.random() * 30 - 15);
+  // Animation starten (naechster Frame)
+  requestAnimationFrame(() => {
+    strip.style.transition = "transform 3.4s cubic-bezier(0.12, 0.7, 0.1, 1)";
+    strip.style.transform = `translateX(${target}px)`;
+  });
+  setTimeout(() => {
+    gambleSpinning = false;
+    if (rollBtn) rollBtn.disabled = gamblePot.size === 0;
+    onDone();
+  }, 3500);
 }
 
 function gambleReward(tier) {
@@ -3632,29 +3689,47 @@ function gambleReward(tier) {
     const pool = all.filter(([, d]) => d.type === "weapon" && d.rarity === rarity);
     return pool.length ? pool[Math.floor(Math.random() * pool.length)][0] : null;
   };
+  const pickSignature = () => {
+    const sigs = ["earthsplitter", "shadowbite", "tempest_rod", "worldtree_staff", "heartbreaker"];
+    return sigs[Math.floor(Math.random() * sigs.length)];
+  };
   const pickRune = (tierName) => {
     const types = ["ruby", "sapphire", "emerald", "topaz", "amethyst", "diamond"];
     return runeId(types[Math.floor(Math.random() * types.length)], tierName);
   };
+  const rareEarths = ["frost_core", "ember_spark", "shadow_essence", "sky_shard", "tide_pearl"];
+  const icon = (id) => itemDefs[id]?.icon || "🎁";
+
+  if (tier === "ultra") {
+    // Ultra-Rare: Signatur-Waffe oder Relikt-Bündel oder Perfekt-Rune
+    const r = Math.random();
+    if (r < 0.5) { const id = pickSignature(); return { itemId: id, icon: icon(id), cls: "jackpot", tierClass: "ultra", label: `💎🎉 ULTRA-RARE! Signatur-Waffe: ${itemDefs[id].name}!` }; }
+    if (r < 0.8) return { itemId: "ancient_relic", count: 3, icon: "🏆", cls: "jackpot", tierClass: "ultra", label: "💎🎉 ULTRA! 3× Uraltes Relikt!" };
+    return { itemId: pickRune("perfekt"), icon: "⚪", cls: "jackpot", tierClass: "ultra", label: "💎🎉 ULTRA! Perfekte Rune!" };
+  }
   if (tier === "legendary") {
-    if (Math.random() < 0.5) { const id = pickWeapon("legendary"); if (id) return { itemId: id, label: `🎉 JACKPOT! Legendär: ${itemDefs[id].name}!` }; }
-    return { itemId: pickRune("perfekt"), label: "🎉 JACKPOT! Perfekte Rune!" };
+    if (Math.random() < 0.5) { const id = pickWeapon("legendary"); if (id) return { itemId: id, icon: icon(id), cls: "jackpot", tierClass: "legendary", label: `🎉 JACKPOT! Legendär: ${itemDefs[id].name}!` }; }
+    return { itemId: pickRune("perfekt"), icon: "⚪", cls: "jackpot", tierClass: "legendary", label: "🎉 JACKPOT! Perfekte Rune!" };
   }
   if (tier === "epic") {
-    if (Math.random() < 0.5) { const id = pickWeapon("epic"); if (id) return { itemId: id, label: `✦ Episch: ${itemDefs[id].name}!` }; }
-    return { itemId: pickRune("strahlend"), label: "✦ Strahlende Rune!" };
+    const r = Math.random();
+    if (r < 0.45) { const id = pickWeapon("epic"); if (id) return { itemId: id, icon: icon(id), cls: "win", tierClass: "epic", label: `✦ Episch: ${itemDefs[id].name}!` }; }
+    if (r < 0.75) return { itemId: pickRune("strahlend"), icon: "✦", cls: "win", tierClass: "epic", label: "✦ Strahlende Rune!" };
+    const earth = rareEarths[Math.floor(Math.random() * rareEarths.length)];
+    return { itemId: earth, count: 2, icon: icon(earth), cls: "win", tierClass: "epic", label: `✦ Seltene Erden: 2× ${itemDefs[earth].name}!` };
   }
   if (tier === "rare") {
     const r = Math.random();
-    if (r < 0.4) { const id = pickWeapon("rare"); if (id) return { itemId: id, label: `◆ Selten: ${itemDefs[id].name}` }; }
-    if (r < 0.7) return { itemId: pickRune("klar"), label: "◆ Klare Rune" };
-    return { itemId: "gem", count: 2, label: "◆ 2× Kristall" };
+    if (r < 0.35) { const id = pickWeapon("rare"); if (id) return { itemId: id, icon: icon(id), cls: "win", tierClass: "rare", label: `◆ Selten: ${itemDefs[id].name}` }; }
+    if (r < 0.6) return { itemId: pickRune("klar"), icon: "◆", cls: "win", tierClass: "rare", label: "◆ Klare Rune" };
+    if (r < 0.85) { const earth = rareEarths[Math.floor(Math.random() * rareEarths.length)]; return { itemId: earth, count: 1, icon: icon(earth), cls: "win", tierClass: "rare", label: `◆ Seltene Erde: ${itemDefs[earth].name}` }; }
+    return { itemId: "gem", count: 2, icon: "◆", cls: "win", tierClass: "rare", label: "◆ 2× Kristall" };
   }
   // trash → Trostpreis
   const r = Math.random();
-  if (r < 0.4) return { gold: 30, label: "Naja… 30 Gold zurück." };
-  if (r < 0.7) return { itemId: "metin_shard", count: 1, label: "Ein Metin-Splitter. Besser als nichts." };
-  return { itemId: pickRune("rissig"), label: "Eine rissige Rune. Pech gehabt!" };
+  if (r < 0.4) return { gold: 30, icon: "🪙", cls: "meh", tierClass: "common", label: "Naja… 30 Gold zurück." };
+  if (r < 0.7) return { itemId: "metin_shard", count: 1, icon: "✦", cls: "meh", tierClass: "common", label: "Ein Metin-Splitter. Besser als nichts." };
+  return { itemId: pickRune("rissig"), icon: "◇", cls: "meh", tierClass: "common", label: "Eine rissige Rune. Pech gehabt!" };
 }
 
 function applyQueuedHit(hit) {
