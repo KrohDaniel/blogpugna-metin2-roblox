@@ -6390,7 +6390,7 @@ function armorDrop(source) {
 }
 
 function dropLoot(x, y, source, owner = null, dmgBy = null) {
-  const { drops: dropIds, gold: goldAmount } = rollDrops(currentWorldId, source);
+  const { drops: dropIds, gold: goldAmount } = rollDrops(currentWorldId, source, player.classId);
   // Aggregiere zu Inventar-Eintraegen
   const counts = {};
   for (const id of dropIds) counts[id] = (counts[id] || 0) + 1;

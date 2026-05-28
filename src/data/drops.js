@@ -196,6 +196,32 @@ const weaponPoolByTier = {
 };
 // Signatur-Waffen (sehr selten, nur Boss/Miniboss hoeherer Welten)
 const signaturePool = ["earthsplitter", "shadowbite", "tempest_rod", "worldtree_staff", "heartbreaker"];
+// Rüstung nach Raritaet UND Typ — damit alle Typen (Leder/Leicht/Schwer) droppen,
+// nicht nur Schwer. Wird mit Klassen-Bias ausgewuerfelt.
+const armorPoolByTier = {
+  common:    { leder: ["leather_armor"], leicht: ["mage_robe"],   schwer: [] },
+  rare:      { leder: ["hunter_leather"], leicht: ["iron_armor"], schwer: ["knight_plate"] },
+  epic:      { leder: ["shadow_leather"], leicht: ["silk_garb"],  schwer: ["steel_armor"] },
+  legendary: { leder: [], leicht: [], schwer: ["dragon_plate"] },
+};
+const classArmorPref = { warrior: "schwer", shadow: "leder", runemage: "leicht", druid: "leder", charmer: "leicht" };
+
+function rollArmor(tier, classId) {
+  const pools = armorPoolByTier[tier];
+  if (!pools) return null;
+  const pref = classArmorPref[classId];
+  // 55% bevorzugt den Klassen-Typ (falls in dieser Stufe vorhanden)
+  if (pref && pools[pref] && pools[pref].length && Math.random() < 0.55) {
+    const p = pools[pref];
+    return p[Math.floor(Math.random() * p.length)];
+  }
+  const avail = ["leder", "leicht", "schwer"].filter((t) => pools[t] && pools[t].length);
+  if (!avail.length) return null;
+  const t = avail[Math.floor(Math.random() * avail.length)];
+  const p = pools[t];
+  return p[Math.floor(Math.random() * p.length)];
+}
+
 // Schuhe + Huete nach Raritaet (WoW-artige Extra-Slots)
 const gearPoolByTier = {
   common:    ["leather_boots", "leather_cap"],
@@ -233,7 +259,7 @@ function pickWeightedTier(tiers) {
   return Object.keys(tiers)[0];
 }
 
-export function rollDrops(worldId, rank) {
+export function rollDrops(worldId, rank, classId = null) {
   const table = getDropTable(worldId, rank);
   const drops = [];
   for (const entry of table.rolls || []) {
@@ -245,6 +271,12 @@ export function rollDrops(worldId, rank) {
     const tier = pickWeightedTier(wr.tiers);
     const pool = weaponPoolByTier[tier] || weaponPoolByTier.common;
     drops.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  // Rüstung: eigener Roll mit allen Typen + Klassen-Bias (so faellt nicht nur Schwer)
+  if (Math.random() < wr.chance * 0.7) {
+    const tier = pickWeightedTier(wr.tiers);
+    const aid = rollArmor(tier, classId);
+    if (aid) drops.push(aid);
   }
   // Schuhe/Huete: eigener Roll (etwas seltener als Waffen)
   if (Math.random() < wr.chance * 0.45) {
