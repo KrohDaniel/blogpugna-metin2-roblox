@@ -3101,9 +3101,15 @@ function applyWorldMobs(map) {
     if (raw.bossDefId) enriched.bossDef = bosses[raw.bossDefId] || null;
     const ex = byId.get(id);
     if (ex) {
+      // Ziel-Position fuer Interpolation merken, x/y NICHT hart ueberschreiben
+      const tx = enriched.x, ty = enriched.y;
       Object.assign(ex, enriched);
+      ex.tx = tx; ex.ty = ty;
+      ex.x = ex._cx !== undefined ? ex._cx : tx; // aktuelle (gelerpte) Position halten
+      ex.y = ex._cy !== undefined ? ex._cy : ty;
     } else {
-      mobs.push({ serverId: id, hitTimer: 0, ...enriched });
+      const m = { serverId: id, hitTimer: 0, ...enriched, tx: enriched.x, ty: enriched.y, _cx: enriched.x, _cy: enriched.y };
+      mobs.push(m);
     }
   }
   // remove ghosts: anything not present in the authoritative snapshot,
@@ -3112,6 +3118,19 @@ function applyWorldMobs(map) {
     if (!mobs[i].serverId || !seen.has(mobs[i].serverId)) mobs.splice(i, 1);
   }
   initialSnapshotApplied = true;
+}
+
+// Non-Host: Mobs sanft zur Ziel-Position interpolieren (glaettet 150ms-Snapshots)
+function interpolateRemoteMobs(dt) {
+  if (isHost) return;
+  const k = Math.min(1, dt * 12); // Lerp-Faktor
+  for (const m of mobs) {
+    if (m.tx === undefined) continue;
+    m._cx = (m._cx ?? m.x) + (m.tx - (m._cx ?? m.x)) * k;
+    m._cy = (m._cy ?? m.y) + (m.ty - (m._cy ?? m.y)) * k;
+    m.x = m._cx;
+    m.y = m._cy;
+  }
 }
 
 function applyWorldStones(map) {
@@ -6767,6 +6786,7 @@ function update(dt) {
     }
   }
 
+  interpolateRemoteMobs(dt);
   updateParticles(dt);
   updateProjectiles(dt);
   updateSkillFlashes(dt);
