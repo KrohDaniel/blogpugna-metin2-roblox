@@ -2766,7 +2766,12 @@ async function syncCharactersFromCloud(username = authUser) {
   for (const c of local) byId.set(c.id, c);
   for (const c of cloud) {
     const ex = byId.get(c.id);
-    if (!ex || (c.lastPlayedAt || 0) >= (ex.lastPlayedAt || 0)) byId.set(c.id, c);
+    if (!ex) { byId.set(c.id, c); continue; }
+    // Niemals einen Starter-Stand einen fortgeschrittenen Charakter verdraengen lassen.
+    if (isStarterLoadout(c) && !isStarterLoadout(ex)) continue;
+    if (isStarterLoadout(ex) && !isStarterLoadout(c)) { byId.set(c.id, c); continue; }
+    // Sonst: neuere Version gewinnt (Cloud bei Gleichstand).
+    if ((c.lastPlayedAt || 0) >= (ex.lastPlayedAt || 0)) byId.set(c.id, c);
   }
   const merged = [...byId.values()];
   saveCharacterList(merged, username);
@@ -2832,12 +2837,44 @@ function serializeCurrentCharacter() {
   };
 }
 
+// Erkennt den blanken Starter-Stand (3 Tränke + Starterwaffe + Lederweste, Level 1).
+// Dient als Schutz: ein solcher Stand darf NIE einen fortgeschrittenen Charakter ueberschreiben.
+function isStarterLoadout(snap) {
+  if (!snap) return false;
+  if ((snap.level || 1) > 1) return false;
+  const inv = snap.inventory || [];
+  if (inv.length > 3) return false;
+  const hasPotion = inv.some((e) => e.id === "health_potion");
+  const hasArmor = inv.some((e) => e.id === "leather_armor");
+  return hasPotion && hasArmor;
+}
+
+// Plausibilitaets-Check: wuerde der neue Snapshot einen klar reicheren Stand zerstoeren?
+function wouldDestroyProgress(snap, existing) {
+  if (!existing) return false;
+  const exLvl = existing.level || 1;
+  const exItems = (existing.inventory || []).length;
+  const snLvl = snap.level || 1;
+  const snItems = (snap.inventory || []).length;
+  // Starter-Stand ueber fortgeschrittenen Charakter = blockieren
+  if (isStarterLoadout(snap) && !isStarterLoadout(existing) && (exLvl > 1 || exItems > 3)) return true;
+  // Mehr als 1 Level Verlust ist nur durch Bug moeglich (Tod kostet genau 1)
+  if (snLvl < exLvl - 1) return true;
+  // Inventar von >=3 Items auf 0 geschrumpft = verdaechtig
+  if (exItems >= 3 && snItems === 0) return true;
+  return false;
+}
+
 function saveCurrentCharacter() {
   if (!authUser || !currentCharId) return;
   const snap = serializeCurrentCharacter();
   if (!snap) return;
   const list = loadCharacters();
   const idx = list.findIndex((c) => c.id === currentCharId);
+  if (idx >= 0 && wouldDestroyProgress(snap, list[idx])) {
+    console.warn("Save blockiert: Snapshot wuerde Fortschritt zerstoeren", currentCharId, { snapLvl: snap.level, snapItems: snap.inventory.length, exLvl: list[idx].level, exItems: (list[idx].inventory || []).length });
+    return;
+  }
   if (idx >= 0) list[idx] = snap;
   else list.push(snap);
   saveCharacterList(list);
@@ -2990,9 +3027,24 @@ function hideCharacterSelect() {
 
 async function enterGameWithCharacter(char) {
   hideCharacterSelect();
-  applyCharacter(char);
+  // Vor dem Anwenden die frischeste Version aus der Cloud holen, damit ein
+  // veralteter lokaler Stand niemals einen volleren Cloud-Stand verdraengt.
+  let best = char;
+  try {
+    const cloud = await fetchCharactersFromCloud(authUser);
+    const cloudChar = cloud.find((c) => c.id === char.id);
+    if (cloudChar) {
+      const cLvl = cloudChar.level || 1, cItems = (cloudChar.inventory || []).length;
+      const lLvl = char.level || 1, lItems = (char.inventory || []).length;
+      // Cloud bevorzugen wenn neuer ODER klar reicher (Level/Items)
+      const cloudNewer = (cloudChar.lastPlayedAt || 0) >= (char.lastPlayedAt || 0);
+      const cloudRicher = cLvl > lLvl || cItems > lItems;
+      if (cloudNewer || cloudRicher) best = cloudChar;
+    }
+  } catch {}
+  applyCharacter(best);
   await connectMultiplayer();
-  scheduleTutorial(char);
+  scheduleTutorial(best);
 }
 
 const TUTORIAL_FLAG = "blocpugnaTutorialSeen";
