@@ -373,9 +373,11 @@ function weaponUpgradeBonus() {
   return (equippedWeaponItem()?.upgrade || 0) * 3;
 }
 
-// One-Shot-Sperre: keine einzelne Boss-/Mob-Faehigkeit darf mehr als 30% maxHP machen.
+// One-Shot-Sperre: kein einzelner Boss-/Mob-Treffer macht mehr als 200 Schaden
+// UND nie mehr als 40% maxHP (damit auch niedrige HP nicht ge-one-shottet werden).
+const BOSS_HIT_HARD_CAP = 200;
 function capBossDmg(dmg) {
-  return Math.min(dmg, Math.round(player.maxHp * 0.30));
+  return Math.min(dmg, BOSS_HIT_HARD_CAP, Math.round(player.maxHp * 0.40));
 }
 
 function equippedArmorItem() {
@@ -4695,7 +4697,8 @@ function updateProjectiles(dt) {
     if (!consumed && p.owner === "bot" && !inSafeZone(player.x, player.y)) {
       if (Math.hypot(p.x - player.x, p.y - player.y) < player.r + 12 && player.invuln <= 0) {
         const def = totalDefense();
-        const dmg = Math.max(2, Math.round(p.damage - def * 0.4));
+        // Gedeckelt: kein Boss-Projektil (owner "bot") darf one-shotten (max 200 / 40% maxHP)
+        const dmg = capBossDmg(Math.max(2, Math.round(p.damage - def * 0.4)));
         player.hp -= dmg;
         player.invuln = 0.4;
         floatText(player.x, player.y - 36, `-${dmg}`, "#ff5d62");
@@ -4792,7 +4795,7 @@ function updateLavaPools(dt) {
     if (tick) {
       const inside = Math.hypot(player.x - p.x, player.y - p.y) < p.radius;
       if (inside && player.invuln <= 0) {
-        const dmg = Math.max(2, Math.round(p.damage * 0.5 - totalDefense() * 0.3));
+        const dmg = capBossDmg(Math.max(2, Math.round(p.damage * 0.5 - totalDefense() * 0.3)));
         player.hp -= dmg;
         floatText(player.x, player.y - 28, `-${dmg}`, p.color);
         if (p.isPoison) applyStatus(player, "poisoned", 2);
@@ -8004,7 +8007,8 @@ function update(dt) {
       // sind die telegraphierten Faehigkeiten, nicht das Anrempeln) — sonst ist
       // Nahkampf gegen Bosse besonders auf Mobile fast unmoeglich.
       const contactMult = mob.bossDef ? 0.35 : 1;
-      const mitigatedDamage = Math.max(3, Math.ceil((mob.damage * 0.65 + mob.damage * 0.35) * contactMult - def));
+      let mitigatedDamage = Math.max(3, Math.ceil((mob.damage * 0.65 + mob.damage * 0.35) * contactMult - def));
+      if (mob.bossDef) mitigatedDamage = capBossDmg(mitigatedDamage); // Boss-Beruehrung gedeckelt
       player.hp -= mitigatedDamage;
       gainRage(8); // Krieger laedt Rage durch eingesteckte Treffer
       player.invuln = mob.bossDef ? 0.8 : 0.5; // laengeres i-frame nach Boss-Beruehrung
