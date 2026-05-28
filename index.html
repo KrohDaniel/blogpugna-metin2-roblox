@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=svg-icons" />
+    <link rel="stylesheet" href="styles.css?v=gear-pets" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -296,6 +296,16 @@
                 <span class="ces-icon">—</span>
                 <span class="ces-name">leer</span>
               </div>
+              <div class="char-equip-slot" id="equipBootsSlot">
+                <small>Schuhe</small>
+                <span class="ces-icon">—</span>
+                <span class="ces-name">leer</span>
+              </div>
+              <div class="char-equip-slot" id="equipHatSlot">
+                <small>Hut</small>
+                <span class="ces-icon">—</span>
+                <span class="ces-name">leer</span>
+              </div>
             </div>
             <div class="pet-slot" id="petSlotBlock">
               <small>Pet</small>
@@ -308,6 +318,7 @@
               <button type="button" data-inv-filter="all" class="active">Alle</button>
               <button type="button" data-inv-filter="weapon">Waffen</button>
               <button type="button" data-inv-filter="armor">Ruestung</button>
+              <button type="button" data-inv-filter="gear">👢 Schuhe/Hüte</button>
               <button type="button" data-inv-filter="rune">💎 Runen</button>
               <button type="button" data-inv-filter="potion">Traenke</button>
               <button type="button" data-inv-filter="material">Material</button>
@@ -565,7 +576,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=svg-icons"></script>
-    <script type="module" src="src/main.js?v=svg-icons"></script>
+    <script type="module" src="firebase-config.js?v=gear-pets"></script>
+    <script type="module" src="src/main.js?v=gear-pets"></script>
   </body>
 </html>

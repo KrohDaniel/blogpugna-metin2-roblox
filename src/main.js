@@ -57,6 +57,8 @@ const ui = {
   charCdr: document.querySelector("#charCdr"),
   equipWeaponSlot: document.querySelector("#equipWeaponSlot"),
   equipArmorSlot: document.querySelector("#equipArmorSlot"),
+  equipBootsSlot: document.querySelector("#equipBootsSlot"),
+  equipHatSlot: document.querySelector("#equipHatSlot"),
   skillPrimary: document.querySelector("#skillPrimary"),
   skillSecondary: document.querySelector("#skillSecondary"),
   skillUltimate: document.querySelector("#skillUltimate"),
@@ -291,6 +293,8 @@ const player = {
   weapon: "rust_sword",
   weaponIndex: 1,
   armorIndex: 2,
+  bootsIndex: -1,
+  hatIndex: -1,
   // Combo + Klassen-Resourcen
   comboMeter: 0,        // 0-100, fuellt sich durch Skill+Auto-Combos
   comboTimer: 0,        // > 0 = Combo aktiv, faellt sonst
@@ -317,6 +321,8 @@ const defaultPlayerState = {
   weapon: "rust_sword",
   weaponIndex: 1,
   armorIndex: 2,
+  bootsIndex: -1,
+  hatIndex: -1,
 };
 
 function attackPower() {
@@ -344,7 +350,7 @@ function attackPower() {
   let runeMult = 1;
   if (rs.word?.effect.flatDamagePct) runeMult += rs.word.effect.flatDamagePct;
   if (rs.word?.effect.lowHpDamage && player.hp / player.maxHp < 0.30) runeMult += rs.word.effect.lowHpDamage;
-  const base = player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5) + (rs.flatAttack || 0);
+  const base = player.baseAttack + player.attackBonus + weaponUpgradeBonus() + classBonus + powerBonus + talentBonus + Math.floor(player.level * 1.5) + (rs.flatAttack || 0) + hatBonusAttack();
   return Math.round(base * bearMult * rageMult * steamMult * museMult * spotlightMult * matchMult * runeMult);
 }
 
@@ -396,6 +402,50 @@ function armorSpeedMult() {
   const armor = equippedArmorItem();
   if (!armor) return 1;
   return armorTypeMods[itemDefs[armor.id]?.armorType]?.speedMult || 1;
+}
+
+function equippedBootsItem() {
+  if (typeof player.bootsIndex !== "number" || player.bootsIndex < 0) return null;
+  const entry = player.inventory[player.bootsIndex];
+  if (entry && itemDefs[entry.id]?.type === "boots") return entry;
+  return null;
+}
+
+function equippedHatItem() {
+  if (typeof player.hatIndex !== "number" || player.hatIndex < 0) return null;
+  const entry = player.inventory[player.hatIndex];
+  if (entry && itemDefs[entry.id]?.type === "hat") return entry;
+  return null;
+}
+
+// Schuhe: zusaetzlicher Tempo-Bonus (1 + speed + upgrade)
+function bootsSpeedMult() {
+  const boots = equippedBootsItem();
+  if (!boots) return 1;
+  return 1 + (itemDefs[boots.id].speed || 0) + (boots.upgrade || 0) * 0.02;
+}
+
+// Hut: flacher Angriffs-Bonus
+function hatBonusAttack() {
+  const hat = equippedHatItem();
+  if (!hat) return 0;
+  return (itemDefs[hat.id].bonusAttack || 0) + (hat.upgrade || 0) * 2;
+}
+
+// Hut: zusaetzliche Krit-Chance
+function hatBonusCrit() {
+  const hat = equippedHatItem();
+  if (!hat) return 0;
+  return itemDefs[hat.id].bonusCrit || 0;
+}
+
+// Beim Entfernen eines Inventar-Items alle Equip-Indizes nachziehen.
+// Funktioniert unabhaengig davon, ob vor oder nach splice() aufgerufen.
+function shiftEquipIndices(removedIdx) {
+  for (const key of ["weaponIndex", "armorIndex", "bootsIndex", "hatIndex"]) {
+    if (player[key] === removedIdx) player[key] = -1;
+    else if (player[key] > removedIdx) player[key] -= 1;
+  }
 }
 
 function itemLabel(invItem) {
@@ -479,6 +529,21 @@ function svgIconFor(invItem, color) {
       <path d="M24 4 L40 16 L24 22 L8 16 Z" fill="${shine}" opacity="0.35"/>
       <path d="M24 22 L34 42 L14 42 Z" fill="${dark}" opacity="0.25"/>
       <circle cx="24" cy="26" r="4" fill="${shine}" opacity="0.7"/>
+    `;
+  } else if (def.type === "boots") {
+    // Stiefel mit Fluegel-Akzent (Tempo)
+    body = `
+      <path d="M16 8 L24 8 L24 30 L38 30 L40 40 L16 40 Z" fill="${c}"/>
+      <path d="M16 32 L38 32 L38 36 L16 36 Z" fill="${dark}" opacity="0.5"/>
+      <path d="M24 14 L34 18 L24 20 Z" fill="${shine}" opacity="0.7"/>
+    `;
+  } else if (def.type === "hat") {
+    // Helm/Krone
+    body = `
+      <path d="M10 30 Q24 10 38 30 Z" fill="${c}"/>
+      <rect x="8" y="30" width="32" height="5" rx="2" fill="${dark}"/>
+      <circle cx="24" cy="16" r="3" fill="${shine}" opacity="0.85"/>
+      <path d="M16 30 L18 22 L24 30 L30 22 L32 30 Z" fill="${shine}" opacity="0.3"/>
     `;
   } else if (def.type === "material") {
     if (invItem.id === "frost_core") {
@@ -2494,6 +2559,8 @@ ui.inventory.addEventListener("click", (event) => {
   if (def.type === "potion") usePotion();
   if (def.type === "weapon") equipWeapon(index);
   if (def.type === "armor") equipArmor(index);
+  if (def.type === "boots") equipBoots(index);
+  if (def.type === "hat") equipHat(index);
   if (def.type === "rune") socketRuneFromInventory(index);
 });
 
@@ -2753,6 +2820,8 @@ function serializeCurrentCharacter() {
     weapon: player.weapon,
     weaponIndex: player.weaponIndex,
     armorIndex: player.armorIndex,
+    bootsIndex: player.bootsIndex,
+    hatIndex: player.hatIndex,
     talents: { ...(player.talents || {}) },
     talentPoints: player.talentPoints || 0,
     pets: { ...(player.pets || {}) },
@@ -2798,6 +2867,8 @@ function applyCharacter(char) {
   player.weapon = char.weapon || defaultPlayerState.weapon;
   player.weaponIndex = char.weaponIndex ?? defaultPlayerState.weaponIndex;
   player.armorIndex = char.armorIndex ?? defaultPlayerState.armorIndex;
+  player.bootsIndex = char.bootsIndex ?? -1;
+  player.hatIndex = char.hatIndex ?? -1;
   player.talents = { ...(char.talents || {}) };
   player.talentPoints = char.talentPoints || 0;
   player.pets = { ...(char.pets || {}) };
@@ -2843,6 +2914,8 @@ function createCharacter(name, classId) {
     weapon: starterWeapon,
     weaponIndex: 1,
     armorIndex: 2,
+    bootsIndex: -1,
+    hatIndex: -1,
     createdAt: Date.now(),
     lastPlayedAt: Date.now(),
   };
@@ -3358,11 +3431,8 @@ function executeTrade() {
   // Eigene angebotene Items entfernen (hohe Indizes zuerst)
   const indices = [...activeTrade.offerIdx].sort((a, b) => b - a);
   for (const idx of indices) {
-    if (player.weaponIndex === idx) player.weaponIndex = -1;
-    if (player.armorIndex === idx) player.armorIndex = -1;
     player.inventory.splice(idx, 1);
-    if (player.weaponIndex > idx) player.weaponIndex -= 1;
-    if (player.armorIndex > idx) player.armorIndex -= 1;
+    shiftEquipIndices(idx);
   }
   player.gold = Math.max(0, player.gold - (activeTrade.gold || 0));
   // Erhaltene Items einbuchen
@@ -3430,7 +3500,7 @@ function renderTradeOverlay() {
     // Inventar nach Nuetzlichkeit fuer den Partner sortieren (nuetzlich oben, Muell unten)
     const entries = player.inventory
       .map((e, idx) => ({ e, idx }))
-      .filter(({ e, idx }) => e && !activeTrade.offerIdx.has(idx) && itemDefs[e.id] && idx !== player.weaponIndex && idx !== player.armorIndex)
+      .filter(({ e, idx }) => e && !activeTrade.offerIdx.has(idx) && itemDefs[e.id] && idx !== player.weaponIndex && idx !== player.armorIndex && idx !== player.bootsIndex && idx !== player.hatIndex)
       .sort((a, b) => partnerUsefulness(b.e, partnerClass) - partnerUsefulness(a.e, partnerClass));
     for (const { e, idx } of entries) {
       const def = itemDefs[e.id];
@@ -3467,6 +3537,8 @@ function partnerUsefulness(entry, partnerClass) {
   } else if (def.type === "rune") {
     const r = parseRune(entry.id);
     score += 120 + (r ? runeValue(r.type, r.tier) * 4 : 0);
+  } else if (def.type === "boots" || def.type === "hat") {
+    score += 140;
   } else if (def.type === "material") {
     score += def.rarity === "legendary" ? 110 : 40;
   } else if (def.type === "potion") {
@@ -3488,6 +3560,13 @@ function tradeItemSubtitle(entry, def, partnerClass) {
     return `Rüstung · ${d} DEF${fit}`;
   }
   if (def.type === "rune") { const r = parseRune(entry.id); return r ? `Rune · ${r.def.desc}` : "Rune"; }
+  if (def.type === "boots") return `Schuhe · +${Math.round((def.speed || 0) * 100)}% Tempo`;
+  if (def.type === "hat") {
+    const parts = [];
+    if (def.bonusAttack) parts.push(`+${def.bonusAttack} ATK`);
+    if (def.bonusCrit) parts.push(`+${Math.round(def.bonusCrit * 100)}% Krit`);
+    return `Hut · ${parts.join(", ")}`;
+  }
   if (def.type === "material") return "Material";
   if (def.type === "potion") return `Trank · +${def.heal} HP`;
   return def.type;
@@ -3597,7 +3676,7 @@ function renderGamble() {
     invEl.innerHTML = "";
     player.inventory.forEach((e, idx) => {
       if (!e || gamblePot.has(idx)) return;
-      if (idx === player.weaponIndex || idx === player.armorIndex) return; // ausgeruestetes schuetzen
+      if (idx === player.weaponIndex || idx === player.armorIndex || idx === player.bootsIndex || idx === player.hatIndex) return; // ausgeruestetes schuetzen
       const def = itemDefs[e.id];
       if (!def) return;
       const slot = document.createElement("button");
@@ -3654,11 +3733,8 @@ function rollGamble() {
   // Einsatz verbrauchen (hohe Indizes zuerst)
   const indices = [...gamblePot].sort((a, b) => b - a);
   for (const idx of indices) {
-    if (player.weaponIndex === idx) player.weaponIndex = -1;
-    if (player.armorIndex === idx) player.armorIndex = -1;
     player.inventory.splice(idx, 1);
-    if (player.weaponIndex > idx) player.weaponIndex -= 1;
-    if (player.armorIndex > idx) player.armorIndex -= 1;
+    shiftEquipIndices(idx);
   }
   gamblePot.clear();
   const tier = rollGambleTier(val);
@@ -3672,6 +3748,15 @@ function rollGamble() {
 function grantGambleReward(reward) {
   if (reward.gold) player.gold += reward.gold;
   if (reward.itemId) addInventory(reward.itemId, reward.count || 1);
+  if (reward.petId && specialPets[reward.petId]) {
+    player.pets = player.pets || {};
+    if (!player.pets[reward.petId]) {
+      player.pets[reward.petId] = { bossId: reward.petId, unlockedAt: Date.now(), level: 1 };
+    }
+    player.activePet = reward.petId;
+    initPetRuntime();
+    renderPetSlot();
+  }
   const resEl = document.getElementById("gambleResult");
   if (resEl) {
     resEl.className = `gamble-result ${reward.cls}`;
@@ -3758,10 +3843,15 @@ function gambleReward(tier) {
   const icon = (id) => itemDefs[id]?.icon || "🎁";
 
   if (tier === "ultra") {
-    // Ultra-Rare: Signatur-Waffe oder Relikt-Bündel oder Perfekt-Rune
+    // Ultra-Rare: Legendaeres Tier, Signatur-Waffe, Relikt-Bündel oder Perfekt-Rune
     const r = Math.random();
-    if (r < 0.5) { const id = pickSignature(); return { itemId: id, icon: icon(id), cls: "jackpot", tierClass: "ultra", label: `💎🎉 ULTRA-RARE! Signatur-Waffe: ${itemDefs[id].name}!` }; }
-    if (r < 0.8) return { itemId: "ancient_relic", count: 3, icon: "🏆", cls: "jackpot", tierClass: "ultra", label: "💎🎉 ULTRA! 3× Uraltes Relikt!" };
+    if (r < 0.22) {
+      const petIds = Object.keys(specialPets);
+      const pid = petIds[Math.floor(Math.random() * petIds.length)];
+      return { petId: pid, icon: "🐉", cls: "jackpot", tierClass: "ultra", label: `💎🎉 ULTRA! Legendäres Tier: ${specialPets[pid].name}!` };
+    }
+    if (r < 0.55) { const id = pickSignature(); return { itemId: id, icon: icon(id), cls: "jackpot", tierClass: "ultra", label: `💎🎉 ULTRA-RARE! Signatur-Waffe: ${itemDefs[id].name}!` }; }
+    if (r < 0.82) return { itemId: "ancient_relic", count: 3, icon: "🏆", cls: "jackpot", tierClass: "ultra", label: "💎🎉 ULTRA! 3× Uraltes Relikt!" };
     return { itemId: pickRune("perfekt"), icon: "⚪", cls: "jackpot", tierClass: "ultra", label: "💎🎉 ULTRA! Perfekte Rune!" };
   }
   if (tier === "legendary") {
@@ -6426,6 +6516,27 @@ function equipArmor(index) {
   renderInventory();
 }
 
+function equipBoots(index) {
+  const invItem = player.inventory[index];
+  if (!invItem || itemDefs[invItem.id]?.type !== "boots") return;
+  player.bootsIndex = index;
+  const def = itemDefs[invItem.id];
+  showToast(`${def.name} angezogen (+${Math.round((def.speed || 0) * 100)}% Tempo).`);
+  renderInventory();
+}
+
+function equipHat(index) {
+  const invItem = player.inventory[index];
+  if (!invItem || itemDefs[invItem.id]?.type !== "hat") return;
+  player.hatIndex = index;
+  const def = itemDefs[invItem.id];
+  const parts = [];
+  if (def.bonusAttack) parts.push(`+${def.bonusAttack} Angriff`);
+  if (def.bonusCrit) parts.push(`+${Math.round(def.bonusCrit * 100)}% Krit`);
+  showToast(`${def.name} aufgesetzt (${parts.join(", ")}).`);
+  renderInventory();
+}
+
 function isNearBlacksmith() {
   return Math.hypot(player.x - blacksmith.x, player.y - blacksmith.y) < 105;
 }
@@ -6654,10 +6765,7 @@ function confirmMerge() {
     entry.count -= consumeMap.get(idx);
     if (entry.count <= 0) {
       player.inventory.splice(idx, 1);
-      if (player.weaponIndex === idx) player.weaponIndex = -1;
-      if (player.armorIndex === idx) player.armorIndex = -1;
-      if (player.weaponIndex > idx) player.weaponIndex -= 1;
-      if (player.armorIndex > idx) player.armorIndex -= 1;
+      shiftEquipIndices(idx);
     }
   }
 
@@ -6853,11 +6961,7 @@ function smithUpgradeSelected() {
     // Bruch!
     const lost = entry;
     player.inventory.splice(smithSelectedIndex, 1);
-    // Fix equipped indices
-    if (player.weaponIndex === smithSelectedIndex) player.weaponIndex = -1;
-    if (player.armorIndex === smithSelectedIndex) player.armorIndex = -1;
-    if (player.weaponIndex > smithSelectedIndex) player.weaponIndex -= 1;
-    if (player.armorIndex > smithSelectedIndex) player.armorIndex -= 1;
+    shiftEquipIndices(smithSelectedIndex);
     smithSelectedIndex = null;
     skillFlashes.push({ color: "#ff5d62", life: 0.4, maxLife: 0.4 });
     cameraShake = 0.5;
@@ -7205,7 +7309,7 @@ function update(dt) {
   const frostSlow = (player.frostSlowTimer || 0) > 0 ? 0.55 : 1;
   const wolfBoost = (player.wolfForm || 0) > 0 ? 1.6 : 1;
   const museSpeed = (player.museActive || 0) > 0 ? 1.08 : 1;
-  const speedMult = (1 + talentEffect("speedBonus")) * frostSlow * wolfBoost * museSpeed * armorSpeedMult();
+  const speedMult = (1 + talentEffect("speedBonus")) * frostSlow * wolfBoost * museSpeed * armorSpeedMult() * bootsSpeedMult();
   player.x = clamp(player.x + (move.x / len) * player.speed * speedMult * dt, player.r, world.w - player.r);
   player.y = clamp(player.y + (move.y / len) * player.speed * speedMult * dt, player.r, world.h - player.r);
   player.attackCooldown = Math.max(0, player.attackCooldown - dt);
@@ -7682,6 +7786,8 @@ function updateCharOverlay(totalDef) {
   if (ui.charCdr) ui.charCdr.textContent = `${Math.round(totalCdr() * 100)}%`;
   updateEquipSlot(ui.equipWeaponSlot, equippedWeaponItem());
   updateEquipSlot(ui.equipArmorSlot, equippedArmorItem(), "armor");
+  updateEquipSlot(ui.equipBootsSlot, equippedBootsItem(), "boots");
+  updateEquipSlot(ui.equipHatSlot, equippedHatItem(), "hat");
   renderPetSlot();
   renderCharPreview();
 }
@@ -7704,6 +7810,13 @@ function renderCharPreview() {
   p.fillStyle = legColor;
   p.fillRect(cx - 16 * s, cy + 8 * s, 12 * s, 24 * s);
   p.fillRect(cx + 4 * s, cy + 8 * s, 12 * s, 24 * s);
+  // Ausgeruestete Schuhe (ueber den Fuessen)
+  const bootsDef = equippedBootsItem();
+  if (bootsDef) {
+    p.fillStyle = itemDefs[bootsDef.id].color || "#a98056";
+    p.fillRect(cx - 17 * s, cy + 26 * s, 14 * s, 8 * s);
+    p.fillRect(cx + 3 * s, cy + 26 * s, 14 * s, 8 * s);
+  }
   // Körper
   p.fillStyle = classDef.color;
   p.fillRect(cx - 18 * s, cy - 22 * s, 36 * s, 34 * s);
@@ -7725,6 +7838,21 @@ function renderCharPreview() {
   else if (acc === "hood") { p.fillRect(cx - 17 * s, cy - 58 * s, 34 * s, 14 * s); }
   else if (acc === "wizard-hat") { p.fillRect(cx - 18 * s, cy - 60 * s, 36 * s, 8 * s); p.fillRect(cx - 12 * s, cy - 72 * s, 24 * s, 14 * s); p.fillRect(cx - 6 * s, cy - 82 * s, 12 * s, 12 * s); }
   else if (acc === "diadem") { p.fillRect(cx - 14 * s, cy - 58 * s, 28 * s, 4 * s); p.fillStyle = "#ec4899"; p.fillRect(cx - 2 * s, cy - 60 * s, 4 * s, 3 * s); p.fillStyle = "#1a1830"; p.fillRect(cx - 22 * s, cy - 46 * s, 6 * s, 14 * s); p.fillRect(cx + 16 * s, cy - 46 * s, 6 * s, 14 * s); }
+  // Ausgeruesteter Hut (ueber dem Kopf)
+  const hatDef = equippedHatItem();
+  if (hatDef) {
+    const hc = itemDefs[hatDef.id].color || "#c9ced8";
+    p.fillStyle = hc;
+    p.fillRect(cx - 18 * s, cy - 58 * s, 36 * s, 6 * s); // Krempe
+    p.beginPath();
+    p.moveTo(cx - 13 * s, cy - 58 * s);
+    p.lineTo(cx, cy - 72 * s);
+    p.lineTo(cx + 13 * s, cy - 58 * s);
+    p.closePath(); p.fill();
+    p.fillStyle = "#fff"; p.globalAlpha = 0.7;
+    p.beginPath(); p.arc(cx, cy - 70 * s, 2.5 * s, 0, Math.PI * 2); p.fill();
+    p.globalAlpha = 1;
+  }
   // Ausgeruestete Waffe (rechts neben dem Charakter)
   const w = currentWeapon();
   const wx = cx + 30 * s, wy = cy - 6 * s;
@@ -7761,13 +7889,20 @@ function updateEquipSlot(slot, invItem, kind = "weapon") {
   const def = itemDefs[invItem.id];
   if (def?.rarity) slot.classList.add(def.rarity);
   if (iconEl) {
-    iconEl.textContent = def?.icon || "?";
+    const svg = svgIconFor(invItem, def?.color);
+    if (svg) iconEl.innerHTML = svg; else iconEl.textContent = def?.icon || "?";
     iconEl.style.color = def?.color || "#f4f0df";
   }
   if (nameEl) {
-    const stat = kind === "weapon"
-      ? `+${(def.attack || 0) + (invItem.upgrade || 0) * 3} ATK`
-      : `+${(def.defense || 0) + (invItem.upgrade || 0) * 4} DEF`;
+    let stat;
+    if (kind === "weapon") stat = `+${(def.attack || 0) + (invItem.upgrade || 0) * 3} ATK`;
+    else if (kind === "boots") stat = `+${Math.round((def.speed || 0) * 100)}% Tempo`;
+    else if (kind === "hat") {
+      const parts = [];
+      if (def.bonusAttack) parts.push(`+${def.bonusAttack} ATK`);
+      if (def.bonusCrit) parts.push(`+${Math.round(def.bonusCrit * 100)}% Krit`);
+      stat = parts.join(", ");
+    } else stat = `+${(def.defense || 0) + (invItem.upgrade || 0) * 4} DEF`;
     nameEl.textContent = `${def.name}${invItem.upgrade ? ` +${invItem.upgrade}` : ""} (${stat})`;
   }
 }
@@ -7810,6 +7945,7 @@ function totalCritChance() {
   if (player.classId === "shadow") crit += 0.08;
   crit += talentEffect("critBonus");
   crit += equippedRuneStats().crit;
+  crit += hatBonusCrit();
   return Math.min(0.75, crit);
 }
 
@@ -7997,6 +8133,7 @@ function renderInventoryInto(target) {
     if (inventoryFilter === "all") return true;
     const def = itemDefs[entry.id];
     if (!def) return false;
+    if (inventoryFilter === "gear") return def.type === "boots" || def.type === "hat";
     return def.type === inventoryFilter;
   };
   // Reihenfolge: bei Runen-Filter nach Wert sortiert (wertvoll → unwertvoll)
@@ -8031,6 +8168,8 @@ function renderInventoryInto(target) {
     slot.classList.add(`type-${def.type}`);
     if (def.type === "weapon" && player.weaponIndex === i) slot.classList.add("equipped");
     if (def.type === "armor" && player.armorIndex === i) slot.classList.add("equipped");
+    if (def.type === "boots" && player.bootsIndex === i) slot.classList.add("equipped");
+    if (def.type === "hat" && player.hatIndex === i) slot.classList.add("equipped");
     // Merge-Modus: nicht-verschmelzbare ODER andere ID disablen
     if (mergeMode) {
       const mergeable = !!mergeMap[invItem.id];
@@ -8088,6 +8227,13 @@ function renderInventoryInto(target) {
       const mod = armorTypeMods[def.armorType];
       const aMatch = armorClassMatch(def, player.classId) >= 1 ? "✓ ideal für deine Klasse" : "⚠ nicht ideal (-10% Verteidigung)";
       slot.dataset.tooltipSockets = `${mod?.label || def.armorType} — ${mod?.desc || ""} | ${aMatch}`;
+    } else if (def.type === "boots") {
+      slot.dataset.tooltipSockets = `Schuhe — +${Math.round((def.speed || 0) * 100)}% Lauftempo`;
+    } else if (def.type === "hat") {
+      const parts = [];
+      if (def.bonusAttack) parts.push(`+${def.bonusAttack} Angriff`);
+      if (def.bonusCrit) parts.push(`+${Math.round(def.bonusCrit * 100)}% Krit`);
+      slot.dataset.tooltipSockets = `Hut — ${parts.join(", ")}`;
     } else {
       slot.dataset.tooltipSockets = "";
     }
@@ -8528,9 +8674,15 @@ function drawPortalGate(cx, cy, label, color, levelRange = null) {
   }
 }
 
+// Legendaere Spezial-Pets (nicht von Bossen — z.B. von Gluecksspiel-Gunter)
+const specialPets = {
+  gunter_phoenix: { id: "gunter_phoenix", name: "Glut-Phönix", scale: 0.5, hp: 100, damage: 0.30, attackRange: 280, attackCooldown: 1.1, speed: 320, color: "#fb923c", glow: "rgba(251,146,60,0.6)", style: "phoenix" },
+  gunter_drake: { id: "gunter_drake", name: "Schatten-Drake", scale: 0.55, hp: 130, damage: 0.34, attackRange: 260, attackCooldown: 1.2, speed: 300, color: "#a855f7", glow: "rgba(168,85,247,0.6)", style: "drake" },
+};
+
 function getActivePetDef() {
   if (!player.activePet) return null;
-  return bosses[player.activePet]?.pet || null;
+  return bosses[player.activePet]?.pet || specialPets[player.activePet] || null;
 }
 
 function initPetRuntime() {
@@ -8769,7 +8921,7 @@ function renderTrader() {
     for (let i = 0; i < player.inventory.length; i += 1) {
       const inv = player.inventory[i];
       if (!inv) continue;
-      if (i === player.weaponIndex || i === player.armorIndex) continue; // ausgeruestetes nicht verkaufbar
+      if (i === player.weaponIndex || i === player.armorIndex || i === player.bootsIndex || i === player.hatIndex) continue; // ausgeruestetes nicht verkaufbar
       const price = sellPrices[inv.id];
       if (!price) continue;
       const def = itemDefs[inv.id];
@@ -8811,10 +8963,7 @@ function traderSell(index) {
   inv.count -= 1;
   if (inv.count <= 0) {
     player.inventory.splice(index, 1);
-    if (player.weaponIndex === index) player.weaponIndex = -1;
-    if (player.armorIndex === index) player.armorIndex = -1;
-    if (player.weaponIndex > index) player.weaponIndex -= 1;
-    if (player.armorIndex > index) player.armorIndex -= 1;
+    shiftEquipIndices(index);
   }
   showToast(`Verkauft für ${price} Gold.`);
   renderInventory();

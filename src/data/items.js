@@ -104,6 +104,16 @@ export const itemDefs = {
   tide_pearl: { name: "Tide-Perle", icon: "💧", type: "material", rarity: "epic", color: "#22d3ee", breakReduce: 0.25, source: "tideklippen" },
   // Legendäres Upgrade-Material: nur von Bossen + Metin-Steinen höherer Welten
   ancient_relic: { name: "Uraltes Relikt", icon: "🏆", type: "material", rarity: "legendary", color: "#fde047" },
+  // === SCHUHE (boots): geben Lauftempo (speed = Multiplikator-Bonus) ===
+  leather_boots: { name: "Lederstiefel", icon: "👢", type: "boots", rarity: "common", speed: 0.06, color: "#a98056" },
+  swift_boots: { name: "Flinke Stiefel", icon: "👢", type: "boots", rarity: "rare", speed: 0.12, color: "#84a665" },
+  shadow_steps: { name: "Schattenschritte", icon: "👟", type: "boots", rarity: "epic", speed: 0.18, color: "#6f63ff" },
+  windwalkers: { name: "Windläufer", icon: "🥾", type: "boots", rarity: "legendary", speed: 0.28, color: "#fde047" },
+  // === HÜTE (hat): geben Angriff + Krit-Chance ===
+  leather_cap: { name: "Lederkappe", icon: "🧢", type: "hat", rarity: "common", bonusAttack: 2, color: "#a98056" },
+  iron_helm: { name: "Eisenhelm", icon: "⛑", type: "hat", rarity: "rare", bonusAttack: 4, bonusCrit: 0.02, color: "#9ee7ff" },
+  arcane_circlet: { name: "Arkaner Reif", icon: "👑", type: "hat", rarity: "epic", bonusAttack: 7, bonusCrit: 0.04, color: "#c084fc" },
+  crown_of_kings: { name: "Königskrone", icon: "👑", type: "hat", rarity: "legendary", bonusAttack: 12, bonusCrit: 0.07, color: "#fde047" },
 };
 
 // === Runen als Items generieren (type × tier) ===
@@ -137,6 +147,8 @@ export const typeBadges = {
   potion: "🧪",
   material: "✦",
   rune: "💎",
+  boots: "👢",
+  hat: "👑",
 };
 
 export const rarityLabels = {

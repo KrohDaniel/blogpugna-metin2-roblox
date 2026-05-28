@@ -84,6 +84,14 @@ export const sellPrices = {
   iron_armor: 90,
   steel_armor: 180,
   dragon_plate: 320,
+  leather_boots: 20,
+  swift_boots: 70,
+  shadow_steps: 160,
+  windwalkers: 340,
+  leather_cap: 22,
+  iron_helm: 75,
+  arcane_circlet: 170,
+  crown_of_kings: 360,
 };
 
 // Tägliche Quests — werden gewürfelt

@@ -196,6 +196,13 @@ const weaponPoolByTier = {
 };
 // Signatur-Waffen (sehr selten, nur Boss/Miniboss hoeherer Welten)
 const signaturePool = ["earthsplitter", "shadowbite", "tempest_rod", "worldtree_staff", "heartbreaker"];
+// Schuhe + Huete nach Raritaet (WoW-artige Extra-Slots)
+const gearPoolByTier = {
+  common:    ["leather_boots", "leather_cap"],
+  rare:      ["swift_boots", "iron_helm"],
+  epic:      ["shadow_steps", "arcane_circlet"],
+  legendary: ["windwalkers", "crown_of_kings"],
+};
 
 const worldOrder = ["meadows", "frostwastes", "emberforge", "shadowfen", "tideklippen", "skyspire"];
 
@@ -237,6 +244,12 @@ export function rollDrops(worldId, rank) {
   if (Math.random() < wr.chance) {
     const tier = pickWeightedTier(wr.tiers);
     const pool = weaponPoolByTier[tier] || weaponPoolByTier.common;
+    drops.push(pool[Math.floor(Math.random() * pool.length)]);
+  }
+  // Schuhe/Huete: eigener Roll (etwas seltener als Waffen)
+  if (Math.random() < wr.chance * 0.45) {
+    const tier = pickWeightedTier(wr.tiers);
+    const pool = gearPoolByTier[tier] || gearPoolByTier.common;
     drops.push(pool[Math.floor(Math.random() * pool.length)]);
   }
   // Signatur-Waffe: sehr selten, nur Boss/Miniboss ab Welt 2
