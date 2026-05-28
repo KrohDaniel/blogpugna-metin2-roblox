@@ -963,6 +963,8 @@ function completeRaid() {
 
 function updateRaid(dt) {
   if (!raid || currentWorldId !== "frost_raid" || player.hp <= 0) return;
+  // Im Tunnel-Korridor halten (zwischen den Eis-Wänden oben/unten)
+  player.y = clamp(player.y, 150, world.h - 150);
   const bl = raidActiveBlockade();
   if (bl) {
     // Mobs spawnen wenn der Spieler sich naehert (erste Blockade sofort)
@@ -1012,37 +1014,79 @@ function updateRaid(dt) {
 function drawRaid(cam) {
   if (!raid || currentWorldId !== "frost_raid") return;
   const t = performance.now() / 1000;
-  // Lawinen-Wand links
-  const lx = raid.lawineX;
-  const g = ctx.createLinearGradient(lx - 400, 0, lx + 30, 0);
-  g.addColorStop(0, "rgba(220,240,255,0.95)");
-  g.addColorStop(0.7, "rgba(160,200,235,0.85)");
-  g.addColorStop(1, "rgba(120,170,210,0.25)");
-  ctx.fillStyle = g;
-  ctx.fillRect(lx - 800, -200, 830, world.h + 400);
-  // wirbelnde Schnee-Brocken an der Front
-  ctx.fillStyle = "rgba(255,255,255,0.5)";
-  for (let i = 0; i < 14; i += 1) {
-    const yy = ((i * 97 + t * 120) % (world.h + 80)) - 40;
-    const xx = lx - 20 - (i % 4) * 26 + Math.sin(t * 3 + i) * 10;
-    ctx.fillRect(xx, yy, 10 + (i % 3) * 6, 10 + (i % 3) * 6);
+  const x0 = cam.x - 40, x1 = cam.x + cam.w + 40;
+  // === Eis-Tunnel: Wände oben + unten mit Zacken (gibt dem Korridor Struktur) ===
+  const wallH = 120;
+  ctx.fillStyle = "#0c2331";
+  ctx.fillRect(x0, -200, x1 - x0, wallH + 200);                 // oben
+  ctx.fillRect(x0, world.h - wallH, x1 - x0, wallH + 200);       // unten
+  // Eis-Zacken (deterministisch anhand x-Raster)
+  const step = 90;
+  ctx.fillStyle = "#13384a";
+  for (let gx = Math.floor(x0 / step) * step; gx < x1; gx += step) {
+    const h1 = 30 + ((gx * 7) % 40);
+    ctx.beginPath(); ctx.moveTo(gx, wallH); ctx.lineTo(gx + step / 2, wallH + h1); ctx.lineTo(gx + step, wallH); ctx.closePath(); ctx.fill();
+    const h2 = 30 + ((gx * 11) % 40);
+    ctx.beginPath(); ctx.moveTo(gx, world.h - wallH); ctx.lineTo(gx + step / 2, world.h - wallH - h2); ctx.lineTo(gx + step, world.h - wallH); ctx.closePath(); ctx.fill();
   }
-  // "LAWINE →" Warnpfeil an der Front
-  ctx.fillStyle = "#0b2a3a"; ctx.font = "bold 28px sans-serif"; ctx.textAlign = "left";
-  ctx.fillText("LAWINE →", lx - 150, cam.y + 50);
+  // Eisige Highlight-Kante
+  ctx.strokeStyle = "rgba(170,210,235,0.5)"; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x0, wallH); ctx.lineTo(x1, wallH); ctx.moveTo(x0, world.h - wallH); ctx.lineTo(x1, world.h - wallH); ctx.stroke();
+  // Boden-Eisrisse (Landmarken, damit der Tunnel nicht leer wirkt)
+  ctx.strokeStyle = "rgba(150,200,230,0.16)"; ctx.lineWidth = 2;
+  for (let gx = Math.floor(x0 / 260) * 260; gx < x1; gx += 260) {
+    const cy = world.h / 2 + ((gx * 13) % 200) - 100;
+    ctx.beginPath(); ctx.moveTo(gx, cy); ctx.lineTo(gx + 70, cy - 24); ctx.lineTo(gx + 130, cy + 16); ctx.stroke();
+  }
+
+  // === Lawinen-Wand (links) ===
+  const lx = raid.lawineX;
+  // Körper: vertikaler Eis-Gradient (oben hell, unten dunkler) — wirkt wie Schneemasse
+  const body = ctx.createLinearGradient(0, 0, 0, world.h);
+  body.addColorStop(0, "#e8f4fb");
+  body.addColorStop(0.5, "#bcdcec");
+  body.addColorStop(1, "#8fbcd6");
+  ctx.fillStyle = body;
+  ctx.fillRect(x0 < lx - 700 ? lx - 700 : x0, -200, lx - (x0 < lx - 700 ? lx - 700 : x0), world.h + 400);
+  // Gezackte Front-Kante (Eisspitzen die nach rechts ragen)
+  ctx.fillStyle = "#d4ebf6";
+  const fstep = 70;
+  for (let gy = -40; gy < world.h + 40; gy += fstep) {
+    const spike = 26 + Math.sin(t * 2 + gy) * 8;
+    ctx.beginPath();
+    ctx.moveTo(lx, gy);
+    ctx.lineTo(lx + spike, gy + fstep / 2);
+    ctx.lineTo(lx, gy + fstep);
+    ctx.closePath(); ctx.fill();
+  }
+  // tumelnde Schnee-Brocken an der Front
+  ctx.fillStyle = "rgba(255,255,255,0.55)";
+  for (let i = 0; i < 16; i += 1) {
+    const yy = ((i * 97 + t * 140) % (world.h + 80)) - 40;
+    const xx = lx + 8 + Math.sin(t * 3 + i) * 14 - (i % 3) * 18;
+    const sz = 8 + (i % 3) * 6;
+    ctx.fillRect(xx, yy, sz, sz);
+  }
+
   // Eis-Blockaden (ungeraeumte, gespawnte)
   for (const s of raid.segs) {
     if (s.cleared || !s.spawned) continue;
-    ctx.fillStyle = "rgba(190,230,255,0.85)";
-    ctx.fillRect(s.x - 10, -100, 20, world.h + 200);
-    ctx.strokeStyle = "rgba(255,255,255,0.7)"; ctx.lineWidth = 2;
-    ctx.strokeRect(s.x - 10, -100, 20, world.h + 200);
+    const bg = ctx.createLinearGradient(s.x - 14, 0, s.x + 14, 0);
+    bg.addColorStop(0, "rgba(150,210,240,0.55)");
+    bg.addColorStop(0.5, "rgba(220,245,255,0.9)");
+    bg.addColorStop(1, "rgba(150,210,240,0.55)");
+    ctx.fillStyle = bg;
+    ctx.fillRect(s.x - 14, wallH, 28, world.h - wallH * 2);
+    ctx.strokeStyle = "rgba(255,255,255,0.8)"; ctx.lineWidth = 2;
+    ctx.strokeRect(s.x - 14, wallH, 28, world.h - wallH * 2);
     ctx.fillStyle = "#dff3ff"; ctx.font = "bold 16px sans-serif"; ctx.textAlign = "center";
-    ctx.fillText("🧊 Wächter besiegen", s.x, cam.y + 30);
+    ctx.fillText("🧊 Wächter besiegen", s.x, cam.y + 34);
   }
-  // Ziel-Markierung
-  ctx.fillStyle = "rgba(253,224,71,0.5)";
-  ctx.fillRect(RAID_BOSS_X - 4, -100, 8, world.h + 200);
+  // Ziel-Säule (Boss-Arena)
+  ctx.fillStyle = "rgba(253,224,71,0.55)";
+  ctx.fillRect(RAID_BOSS_X - 5, wallH, 10, world.h - wallH * 2);
+  ctx.fillStyle = "#fde047"; ctx.font = "bold 15px sans-serif"; ctx.textAlign = "center";
+  ctx.fillText("❄ ZIEL", RAID_BOSS_X, cam.y + 34);
 }
 
 // Bildschirm-fester Raid-HUD: Fortschritt + Lawinen-Warnung
