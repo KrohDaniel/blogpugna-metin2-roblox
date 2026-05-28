@@ -3651,8 +3651,12 @@ function playGambleReel(reward, onDone) {
   // Zufalls-Füll-Icons (gewichtet nach Raritaet fuer Optik)
   const fillerIcons = ["🗡","🛡","🪄","💎","🔴","🔵","🟢","🟡","🟣","⚪","💃","🌿","⚔","🏆","🌹","💔"];
   const rarities = ["common","common","rare","rare","epic","legendary"];
-  const cellCount = 44;
-  const winIndex = 38; // Gewinn-Zelle
+  const fancyIcons = ["⚔","🌙","🪄","💎","🏆","🌹","💔","⚡"];
+  const cellCount = 50;
+  const winIndex = 44; // Gewinn-Zelle (weiter hinten → laengerer Lauf)
+  // Near-Miss-Spannung: direkt VOR der Gewinn-Zelle stehen high-tier Zellen,
+  // sodass das Rad knapp an einer Legendären/Ultra vorbeibremst.
+  const teaseTiers = { [winIndex - 1]: "legendary", [winIndex - 2]: "ultra", [winIndex + 1]: "legendary" };
   strip.innerHTML = "";
   const cellW = 82; // 76 + 6 gap
   for (let i = 0; i < cellCount; i += 1) {
@@ -3660,6 +3664,9 @@ function playGambleReel(reward, onDone) {
     if (i === winIndex) {
       cell.className = `gamble-reel-cell ${reward.cls === "jackpot" ? "legendary" : reward.cls === "ultra" ? "ultra" : reward.tierClass || "rare"}`;
       cell.textContent = reward.icon || "🎁";
+    } else if (teaseTiers[i]) {
+      cell.className = `gamble-reel-cell ${teaseTiers[i]}`;
+      cell.textContent = fancyIcons[Math.floor(Math.random() * fancyIcons.length)];
     } else {
       cell.className = `gamble-reel-cell ${rarities[Math.floor(Math.random() * rarities.length)]}`;
       cell.textContent = fillerIcons[Math.floor(Math.random() * fillerIcons.length)];
@@ -3669,19 +3676,19 @@ function playGambleReel(reward, onDone) {
   // Startposition zuruecksetzen
   strip.style.transition = "none";
   strip.style.transform = "translateX(0)";
-  // Ziel: Gewinn-Zelle unter den Marker (Mitte) zentrieren
+  // Ziel: Gewinn-Zelle knapp unter dem Marker (leichter Versatz → "knapp daneben"-Gefuehl)
   const reelW = reel.clientWidth || 360;
-  const target = -(winIndex * cellW + cellW / 2 - reelW / 2) - (Math.random() * 30 - 15);
-  // Animation starten (naechster Frame)
+  const target = -(winIndex * cellW + cellW / 2 - reelW / 2) - (Math.random() * 18 - 4);
+  // Langsamer + staerkeres Ausbremsen am Ende (mehr Spannung)
   requestAnimationFrame(() => {
-    strip.style.transition = "transform 3.4s cubic-bezier(0.12, 0.7, 0.1, 1)";
+    strip.style.transition = "transform 5.2s cubic-bezier(0.08, 0.62, 0.04, 1)";
     strip.style.transform = `translateX(${target}px)`;
   });
   setTimeout(() => {
     gambleSpinning = false;
     if (rollBtn) rollBtn.disabled = gamblePot.size === 0;
     onDone();
-  }, 3500);
+  }, 5300);
 }
 
 function gambleReward(tier) {
