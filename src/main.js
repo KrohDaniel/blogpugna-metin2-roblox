@@ -898,13 +898,13 @@ function spawnWorldBoss(bossDef) {
 }
 
 // ===== EISBRECHER-FLUCHT (Raid) =====
-const RAID_SEGMENTS = [1500, 3000, 4500]; // x-Positionen der Eis-Blockaden
-const RAID_BOSS_X = 6000;
-const RAID_LAWINE_SPEED = 62; // px/s — Grundtempo der Lawine
+const RAID_SEGMENTS = [700, 1950, 3200]; // x-Positionen der Eis-Blockaden (erste gleich am Start)
+const RAID_BOSS_X = 4500;
+const RAID_LAWINE_SPEED = 60; // px/s — Grundtempo der Lawine
 
 function startRaid() {
   raid = {
-    lawineX: -400,
+    lawineX: -120, // gleich am linken Rand sichtbar als Bedrohung
     segs: RAID_SEGMENTS.map((x) => ({ x, spawned: false, cleared: false })),
     bossSpawned: false,
     done: false,
@@ -963,8 +963,8 @@ function updateRaid(dt) {
   if (!raid || currentWorldId !== "frost_raid" || player.hp <= 0) return;
   const bl = raidActiveBlockade();
   if (bl) {
-    // Mobs spawnen wenn der Spieler sich naehert
-    if (!bl.spawned && player.x > bl.x - 640) {
+    // Mobs spawnen wenn der Spieler sich naehert (erste Blockade sofort)
+    if (!bl.spawned && player.x > bl.x - 760) {
       spawnRaidMobs(bl);
       bl.spawned = true;
       showToast("🧊 Eis-Blockade! Räum die Wächter weg, um durchzukommen.");
@@ -2320,6 +2320,7 @@ document.querySelectorAll("[data-smith-mode]").forEach((btn) => {
 });
 
 document.querySelector("#mergeClear")?.addEventListener("click", clearMergeSlots);
+document.querySelector("#mergeAuto")?.addEventListener("click", autoFillMergeButton);
 document.querySelector("#mergeConfirm")?.addEventListener("click", confirmMerge);
 // Klick auf leeren Merge-Slot fuellt automatisch aus dem Inventar.
 // Klick auf gefuellten Slot entfernt das Item.
@@ -2706,7 +2707,8 @@ smithInventoryEl?.addEventListener("click", (event) => {
       showToast("Nur Common-Waffen/Rüstung sind verschmelzbar.");
       return;
     }
-    tryAddToMerge(index);
+    // Ein Klick füllt automatisch alle 3 Slots mit gleichen Items → nur noch "Verschmelzen" drücken
+    autoFillMerge(index);
     return;
   }
   if (smithMode === "socket") {
@@ -6976,6 +6978,34 @@ function tryAddToMerge(invIndex) {
   }
   showToast("Alle 3 Slots belegt — leere zuerst.");
   return false;
+}
+
+// Fuellt alle 3 Merge-Slots automatisch mit Kopien derselben ID (Stacks zaehlen mehrfach).
+function autoFillMergeFrom(targetId) {
+  const def = itemDefs[targetId];
+  if (!def || !mergeMap[targetId]) { showToast("Dieses Item ist nicht verschmelzbar."); return false; }
+  const avail = [];
+  player.inventory.forEach((e, i) => { if (e && e.id === targetId) { for (let k = 0; k < (e.count || 1); k += 1) avail.push(i); } });
+  mergeSlots = [null, null, null];
+  for (let s = 0; s < 3 && avail.length; s += 1) mergeSlots[s] = avail.shift();
+  renderMergeSlots();
+  renderInventory();
+  const filled = mergeSlots.filter((x) => x !== null).length;
+  if (filled < 3) showToast(`Brauchst 3× ${def.name} (nur ${filled} vorhanden).`);
+  return filled === 3;
+}
+function autoFillMerge(invIndex) {
+  const inv = player.inventory[invIndex];
+  return inv ? autoFillMergeFrom(inv.id) : false;
+}
+function autoFillMergeButton() {
+  let targetId = null;
+  for (const s of mergeSlots) if (s !== null && player.inventory[s]) { targetId = player.inventory[s].id; break; }
+  if (!targetId) {
+    for (const e of player.inventory) { if (e && mergeMap[e.id] && usableByPlayerClass(itemDefs[e.id])) { targetId = e.id; break; } }
+  }
+  if (!targetId) { showToast("Kein verschmelzbares Item im Inventar."); return; }
+  autoFillMergeFrom(targetId);
 }
 
 function clearMergeSlots() {

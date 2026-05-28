@@ -112,7 +112,7 @@ worldDefs.frost_raid = {
   name: "Eisbrecher-Tunnel",
   subtitle: "RAID: Flucht vor der Lawine — räum die Blockaden, erreiche den Frost-Wyrm",
   levelRange: [18, 22],
-  size: { w: 6400, h: 1000 },
+  size: { w: 4900, h: 1000 },
   ground: "#16384a",
   groundAccent: "rgba(180,210,240,0.12)",
   fog: "rgba(150,190,220,0.20)",
