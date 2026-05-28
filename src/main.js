@@ -7104,7 +7104,7 @@ function renderMergeSlots() {
       const targetIcon = svgIconFor({ id: targetId }, targetDef.color) || targetDef.icon;
       const baseChance = mergeSuccessChance(targetDef.rarity);
       const { boost, stoneId } = specialStoneBoost();
-      const totalChance = Math.min(0.95, baseChance + boost);
+      const totalChance = player.fastmode ? 1 : Math.min(0.95, baseChance + boost);
       const chanceColor = totalChance >= 0.75 ? "var(--green)" : totalChance >= 0.5 ? "var(--gold)" : "var(--red)";
       const stoneNote = stoneId
         ? `<small class="mp-stone">+${Math.round(boost * 100)}% durch ${itemDefs[stoneId]?.name} (wird verbraucht)</small>`
@@ -7188,7 +7188,7 @@ function confirmMerge() {
   const baseChance = mergeSuccessChance(targetDef.rarity);
   const { boost, stoneId } = specialStoneBoost();
   if (stoneId) removeInventory(stoneId, 1);
-  const totalChance = Math.min(0.95, baseChance + boost);
+  const totalChance = player.fastmode ? 1 : Math.min(0.95, baseChance + boost);
   const roll = Math.random();
   const success = roll < totalChance;
 
@@ -7297,6 +7297,7 @@ function upgradeCost(nextLevel, kind, rarity = "common") {
 }
 
 function breakChance(nextLevel, worldId = currentWorldId) {
+  if (player.fastmode) return 0; // Testmodus: kein Bruch-Risiko
   if (nextLevel <= 3) return 0;
   let base;
   if (nextLevel <= 6) base = 0.12 + (nextLevel - 4) * 0.065; // 12%, 18.5%, 25%
