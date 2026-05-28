@@ -7,7 +7,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>Blocpugna Prototype</title>
-    <link rel="stylesheet" href="styles.css?v=armor-upgrade" />
+    <link rel="stylesheet" href="styles.css?v=smith-protect" />
   </head>
   <body>
     <section id="authOverlay" class="auth-overlay" aria-label="Blocpugna Login">
@@ -458,6 +458,16 @@
                 <div class="smith-risk-bar"><span id="smithRiskFill"></span></div>
                 <strong id="smithRiskText">0%</strong>
               </div>
+              <div id="smithProtectBlock" class="smith-protect hidden">
+                <small>🛡 Schutz-Opfer (legendär) — senkt das Bruch-Risiko</small>
+                <div id="smithProtectSlot" class="smith-item-slot empty">
+                  <span class="smith-slot-hint">Legendäres Item wählen →</span>
+                </div>
+                <div class="smith-actions">
+                  <button id="smithProtectPick" type="button">Schutz wählen</button>
+                  <button id="smithProtectClear" type="button" class="hidden">Entfernen</button>
+                </div>
+              </div>
               <div class="smith-actions">
                 <button id="upgradeWeapon" type="button" disabled>Aufwerten +1</button>
                 <button id="smithReturn" type="button">Item zurueck</button>
@@ -578,7 +588,7 @@
       </aside>
     </main>
 
-    <script type="module" src="firebase-config.js?v=armor-upgrade"></script>
-    <script type="module" src="src/main.js?v=armor-upgrade"></script>
+    <script type="module" src="firebase-config.js?v=smith-protect"></script>
+    <script type="module" src="src/main.js?v=smith-protect"></script>
   </body>
 </html>
